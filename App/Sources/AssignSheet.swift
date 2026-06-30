@@ -13,8 +13,8 @@ struct AssignSheet: View {
     private let cal = Calendar.current
 
     private var current: ShiftAssignment? {
-        let day = cal.startOfDay(for: date)
-        return assignments.first { cal.startOfDay(for: $0.date) == day }
+        let key = DayKey.from(date, cal)
+        return assignments.first { $0.dayKey == key }
     }
     private var currentProfile: DutyProfile? {
         current.flatMap { a in profiles.first { $0.id == a.dutyProfileId } }

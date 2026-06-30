@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UIKit
 import NurseDutyModel
 
 private struct DayPick: Identifiable {
@@ -13,6 +14,7 @@ struct CalendarView: View {
 
     @State private var month: Date = Calendar.current.startOfDay(for: Date())
     @State private var pick: DayPick?
+    @State private var dayToken = 0   // bumped at the date boundary to refresh the "today" highlight
 
     private let cal = Calendar.current
 
@@ -27,6 +29,9 @@ struct CalendarView: View {
             .padding()
             .navigationTitle("근무표")
             .sheet(item: $pick) { p in AssignSheet(date: p.date) }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+                dayToken &+= 1   // recompute today's highlight at midnight/DST/timezone
+            }
         }
     }
 
@@ -34,8 +39,8 @@ struct CalendarView: View {
     private var profileByID: [UUID: DutyProfile] {
         Dictionary(profiles.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
     }
-    private var assignmentByDay: [Date: ShiftAssignment] {
-        Dictionary(assignments.map { (cal.startOfDay(for: $0.date), $0) }, uniquingKeysWith: { a, _ in a })
+    private var assignmentByDay: [Int: ShiftAssignment] {
+        Dictionary(assignments.map { ($0.dayKey, $0) }, uniquingKeysWith: { a, _ in a })
     }
 
     // MARK: header
@@ -92,7 +97,7 @@ struct CalendarView: View {
         }
     }
     private func dayCell(_ day: Date) -> some View {
-        let assignment = assignmentByDay[cal.startOfDay(for: day)]
+        let assignment = assignmentByDay[DayKey.from(day, cal)]
         let profile = assignment.flatMap { profileByID[$0.dutyProfileId] }
         return Button { pick = DayPick(date: day) } label: {
             VStack(spacing: 4) {

@@ -60,6 +60,11 @@ enum DemoSeed {
                 _ = try? Assignments.upsert(in: ctx, date: date, dutyProfileId: day.id)
             }
         }
+        if (try? ctx.fetchCount(FetchDescriptor<QuickMemo>())) == 0 {
+            ctx.insert(QuickMemo(bedTag: "1001:01", text: "진통제 호소 — 처방 확인 필요"))
+            ctx.insert(QuickMemo(bedTag: "1003:02", text: "오심 호소, 저녁 식사 거부"))
+            ctx.insert(QuickMemo(bedTag: "1005:01", text: "수면제 요청", isDone: true))
+        }
         try? ctx.save()
     }
 }

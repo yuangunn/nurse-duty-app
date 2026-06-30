@@ -98,6 +98,7 @@ struct ProfileEditor: View {
             ctx.insert(DutyProfile(name: name, colorHex: colorHex, sortOrder: maxOrder + 1))
         }
         try? ctx.save()
+        rearm(ctx)   // a rename changes the notification body (profile.name); re-emit pending alarms
         dismiss()
     }
 }

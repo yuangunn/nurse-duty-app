@@ -91,11 +91,11 @@ public final class ChecklistItem {
 // Plain UUID ref to the item (NOT a relationship): deleting/archiving an item must never wipe history.
 @Model
 public final class ChecklistCheck {
-    #Unique<ChecklistCheck>([\.checklistItemId, \.date])   // one check per item per day
+    #Unique<ChecklistCheck>([\.checklistItemId, \.dayKey])   // one check per item per day
 
     public var id: UUID
     public var checklistItemId: UUID
-    public var date: Date                 // normalized to startOfDay in init
+    public var dayKey: Int                // yyyymmdd, timezone-independent
     public var checkedAt: Date
     public var createdAt: Date
 
@@ -104,7 +104,7 @@ public final class ChecklistCheck {
                 calendar: Calendar = .current) {
         self.id = id
         self.checklistItemId = checklistItemId
-        self.date = calendar.startOfDay(for: date)   // guarantees the unique key is day-granular
+        self.dayKey = DayKey.from(date, calendar)
         self.checkedAt = checkedAt
         self.createdAt = createdAt
     }
@@ -114,10 +114,10 @@ public final class ChecklistCheck {
 // dutyProfileId is a plain UUID ref (no cascade): archiving a profile must not delete past assignments.
 @Model
 public final class ShiftAssignment {
-    #Unique<ShiftAssignment>([\.date])     // one duty per day
+    #Unique<ShiftAssignment>([\.dayKey])   // one duty per day
 
     public var id: UUID
-    public var date: Date                  // the shift START date, normalized to startOfDay
+    public var dayKey: Int                  // yyyymmdd of the shift START day, timezone-independent
     public var dutyProfileId: UUID
     public var note: String?               // handover / shift note (shift-scoped, not bed-scoped)
     public var createdAt: Date
@@ -126,11 +126,14 @@ public final class ShiftAssignment {
                 note: String? = nil, createdAt: Date = Date(),
                 calendar: Calendar = .current) {
         self.id = id
-        self.date = calendar.startOfDay(for: date)
+        self.dayKey = DayKey.from(date, calendar)
         self.dutyProfileId = dutyProfileId
         self.note = note
         self.createdAt = createdAt
     }
+
+    /// The shift's start day, reconstructed for display / fire-time math.
+    public var day: Date { DayKey.date(dayKey) }
 }
 
 // MARK: - Quick Memo (ad-hoc, bed-scoped, inbox → swipe-done)

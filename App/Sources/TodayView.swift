@@ -1,22 +1,26 @@
 import SwiftUI
 import SwiftData
+import UIKit
 import NurseDutyModel
 
 struct TodayView: View {
     @Environment(\.modelContext) private var ctx
+    @Environment(\.scenePhase) private var scenePhase
     @Query private var assignments: [ShiftAssignment]
     @Query(sort: \DutyProfile.sortOrder) private var profiles: [DutyProfile]
     @Query private var checks: [ChecklistCheck]
+    @State private var dayToken = 0   // bumped at the date boundary so "today" rolls over while foregrounded
 
     private let cal = Calendar.current
     private var today: Date { cal.startOfDay(for: Date()) }
+    private var todayKey: Int { DayKey.from(Date(), cal) }
 
     private var todaysProfile: DutyProfile? {
-        guard let a = assignments.first(where: { cal.startOfDay(for: $0.date) == today }) else { return nil }
+        guard let a = assignments.first(where: { $0.dayKey == todayKey }) else { return nil }
         return profiles.first { $0.id == a.dutyProfileId }
     }
     private var checkedToday: Set<UUID> {
-        Set(checks.filter { cal.startOfDay(for: $0.date) == today }.map(\.checklistItemId))
+        Set(checks.filter { $0.dayKey == todayKey }.map(\.checklistItemId))
     }
 
     var body: some View {
@@ -31,6 +35,12 @@ struct TodayView: View {
                 }
             }
             .navigationTitle(todayTitle)
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+                dayToken &+= 1
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { dayToken &+= 1 }   // returning to the app re-reads the current day
+            }
         }
     }
 

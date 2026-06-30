@@ -4,15 +4,18 @@ import UIKit
 struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.modelContext) private var ctx
+    @State private var selection = 0
 
     var body: some View {
-        TabView {
-            TodayView()
+        TabView(selection: $selection) {
+            TodayView().tag(0)
                 .tabItem { Label("오늘", systemImage: "checklist") }
-            CalendarView()
+            CalendarView().tag(1)
                 .tabItem { Label("근무표", systemImage: "calendar") }
-            ProfilesView()
+            ProfilesView().tag(2)
                 .tabItem { Label("듀티", systemImage: "person.2.badge.gearshape") }
+            MemoView().tag(3)
+                .tabItem { Label("메모", systemImage: "note.text") }
         }
         // Two separate tasks: requestAuthorization() suspends until the user answers the prompt,
         // and arming must NOT wait on that — add() schedules regardless of authorization.
@@ -23,6 +26,11 @@ struct RootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
             rearm(ctx)                                    // midnight / DST / timezone
+        }
+        .onAppear {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--tab-memo") { selection = 3 }
+            #endif
         }
     }
 }

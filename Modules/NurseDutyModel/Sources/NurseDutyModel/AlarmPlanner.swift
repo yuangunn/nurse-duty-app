@@ -32,17 +32,19 @@ public enum AlarmPlanner {
                                       to: calendar.startOfDay(for: now)) else { return [] }
         var planned: [PlannedAlarm] = []
         for assignment in assignments {
-            guard let profile = profilesByID[assignment.dutyProfileId] else { continue }
+            // archived profiles are soft-deleted: their assignments stay for history but must not fire alarms.
+            guard let profile = profilesByID[assignment.dutyProfileId], !profile.isArchived else { continue }
+            let shiftDate = assignment.day
             for alarm in profile.alarms where alarm.isEnabled {
-                guard let fire = AlarmScheduling.fireDate(shiftDate: assignment.date, alarm: alarm,
+                guard let fire = AlarmScheduling.fireDate(shiftDate: shiftDate, alarm: alarm,
                                                           calendar: calendar),
                       fire > now, fire <= end,
-                      let comps = AlarmScheduling.triggerComponents(shiftDate: assignment.date,
+                      let comps = AlarmScheduling.triggerComponents(shiftDate: shiftDate,
                                                                     hour: alarm.hour, minute: alarm.minute,
                                                                     dayOffset: alarm.dayOffset,
                                                                     calendar: calendar)
                 else { continue }
-                let id = AlarmScheduling.notificationID(shiftDate: assignment.date,
+                let id = AlarmScheduling.notificationID(shiftDate: shiftDate,
                                                         dutyProfileID: profile.id, alarmID: alarm.id,
                                                         calendar: calendar)
                 planned.append(PlannedAlarm(id: id, fireDate: fire, components: comps,
@@ -52,13 +54,16 @@ public enum AlarmPlanner {
         return Array(planned.sorted { $0.fireDate < $1.fireDate }.prefix(budget))
     }
 
-    /// Idempotent diff: what to add and what stale identifiers to remove. We only ever compare
-    /// against alarm identifiers we own — callers filter pending to ids containing "#".
+    /// Reconcile against currently-pending identifiers. We RE-EMIT every desired occurrence (not
+    /// just ids absent from pending) because the id encodes only day#duty#alarm — not the time or
+    /// label. An edited alarm keeps its id, so to propagate the new fire time/content we must re-add
+    /// it; UNUserNotificationCenter.add(_:) replaces a same-id request, so this stays idempotent.
+    /// `remove` drops ids no longer desired (deleted/disabled/archived/out-of-window). We only ever
+    /// touch ids we own — callers filter pending to ids containing "#".
     public static func reconcile(pending: Set<String>,
                                  desired: [PlannedAlarm]) -> (add: [PlannedAlarm], remove: [String]) {
         let desiredIDs = Set(desired.map(\.id))
-        let add = desired.filter { !pending.contains($0.id) }
         let remove = pending.subtracting(desiredIDs).sorted()
-        return (add, remove)
+        return (desired, remove)
     }
 }

@@ -67,14 +67,28 @@ import Foundation
         #expect(plan.map(\.title) == ["켜짐"])   // disabled dropped; 23:00 > 22:00 kept
     }
 
-    @Test func reconcileAddsMissingAndRemovesStale() throws {
+    @Test func reconcileReemitsDesiredAndRemovesStale() throws {
         func pa(_ id: String) -> PlannedAlarm {
             PlannedAlarm(id: id, fireDate: Date(timeIntervalSinceReferenceDate: 0),
                          components: DateComponents(), title: "", body: "")
         }
         let (add, remove) = AlarmPlanner.reconcile(pending: ["A", "B", "C"],
                                                    desired: [pa("B"), pa("C"), pa("D")])
-        #expect(add.map(\.id) == ["D"])      // D is new
+        // re-emit ALL desired so edited alarms (same id, new time/label) get replaced;
+        // add(_:) replaces same-id requests, so this is idempotent.
+        #expect(Set(add.map(\.id)) == ["B", "C", "D"])
         #expect(remove == ["A"])             // A no longer desired
+    }
+
+    @Test func planSkipsArchivedProfiles() throws {
+        let cal = seoul
+        let archived = DutyProfile(name: "Day", colorHex: "#4F86C6", isArchived: true,
+                                   alarms: [AlarmItem(label: "인계", hour: 23, minute: 0)])
+        let byID = [archived.id: archived]
+        let day = cal.date(from: DateComponents(year: 2026, month: 6, day: 30, hour: 22))!
+        let plan = AlarmPlanner.plan(
+            assignments: [ShiftAssignment(date: day, dutyProfileId: archived.id, calendar: cal)],
+            profilesByID: byID, from: day, windowDays: 7, budget: 50, calendar: cal)
+        #expect(plan.isEmpty)   // archived duty must not schedule alarms
     }
 }

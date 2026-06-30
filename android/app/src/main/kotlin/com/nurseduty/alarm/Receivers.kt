@@ -1,15 +1,40 @@
 package com.nurseduty.alarm
 
+import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import androidx.core.app.NotificationCompat
+import com.nurseduty.NurseApp
+import kotlinx.coroutines.launch
 
-/** Fleshed out in the scheduler step — posts the notification when an alarm fires. */
+/** Posts the notification when a scheduled alarm fires. */
 class AlarmReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) {}
+    override fun onReceive(context: Context, intent: Intent) {
+        val title = intent.getStringExtra("title") ?: "근무 알림"
+        val body = intent.getStringExtra("body") ?: ""
+        Notifications.ensureChannel(context)
+        val notification = NotificationCompat.Builder(context, Notifications.CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_popup_reminder)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setAutoCancel(true)
+            .build()
+        context.getSystemService(NotificationManager::class.java)
+            .notify((intent.getStringExtra("id") ?: title).hashCode(), notification)
+    }
 }
 
-/** Re-arms the rolling alarm window after a device reboot. */
+/** Re-arms the rolling alarm window after a reboot (pending alarms are cleared on boot). */
 class BootReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) {}
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
+        val pending = goAsync()
+        val app = context.applicationContext as NurseApp
+        app.scope.launch {
+            try { app.repository.rescheduleNow() } finally { pending.finish() }
+        }
+    }
 }

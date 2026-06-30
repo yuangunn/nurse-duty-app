@@ -3,3 +3,5 @@
 DerivedData/
 *.xcuserstate
 *.xcodeproj/
+.build-device/
+App/Info-Device.plist

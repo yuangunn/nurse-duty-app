@@ -1,0 +1,39 @@
+# Free-provisioning device build: phone CORE app only.
+# Strips App Group + time-sensitive entitlements (a free Apple ID can't sign those) and drops the
+# widget/watch targets. The app falls back to a local SwiftData store when the App Group is absent,
+# so 근무표·알람·체크리스트·빠른메모 all work on a real device with a personal team.
+# Widgets/watch real-device testing needs a paid Apple Developer account (use the main project.yml).
+name: NurseDutyDevice
+options:
+  bundleIdPrefix: com.example.nurseduty
+  createIntermediateGroups: true
+  deploymentTarget:
+    iOS: "18.0"
+packages:
+  NurseDutyModel:
+    path: ../Modules/NurseDutyModel
+targets:
+  NurseDuty:
+    type: application
+    platform: iOS
+    sources:
+      - Sources
+    dependencies:
+      - package: NurseDutyModel
+    info:
+      path: Info-Device.plist
+      properties:
+        UILaunchScreen: {}
+        CFBundleURLTypes:
+          - CFBundleURLName: com.example.nurseduty
+            CFBundleURLSchemes: [nurseduty]
+    settings:
+      base:
+        # 👉 CHANGE this to something unique under your Apple ID, e.g. com.yourname.nurseduty
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.nurseduty.device
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        # No CODE_SIGN_ENTITLEMENTS on purpose -> free provisioning can sign.
+        # Set your team in Xcode (Signing & Capabilities -> Automatically manage signing -> your Personal Team).

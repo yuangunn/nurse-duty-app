@@ -36,6 +36,15 @@
             </intent-filter>
         </receiver>
 
+        <service
+            android:name=".wear.PhoneWearService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data android:scheme="wear" android:host="*" android:pathPrefix="/command" />
+            </intent-filter>
+        </service>
+
         <receiver
             android:name=".widget.NurseWidgetReceiver"
             android:exported="false">

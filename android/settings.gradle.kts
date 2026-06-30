@@ -12,4 +12,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "NurseDuty"
-include(":domain", ":app")
+include(":domain", ":app", ":wear")

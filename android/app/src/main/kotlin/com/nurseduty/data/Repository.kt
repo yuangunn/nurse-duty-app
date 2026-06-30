@@ -9,6 +9,9 @@ import com.nurseduty.domain.AlarmSpec
 import com.nurseduty.domain.DayKey
 import com.nurseduty.domain.DutyProfile
 import com.nurseduty.domain.ShiftAssignment
+import com.nurseduty.domain.WearCommand
+import com.nurseduty.domain.WearState
+import com.nurseduty.wear.WearSync
 import com.nurseduty.widget.NurseWidget
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -28,6 +31,7 @@ class Repository(
 ) {
     private val dao = db.dao()
     private val rescheduleMutex = Mutex()
+    private val wearSync = WearSync(appContext)
 
     val profiles = dao.profiles()
     val alarms = dao.alarms()
@@ -112,7 +116,38 @@ class Repository(
         refreshWidget()
     }
 
-    suspend fun refreshWidget() = runCatching { NurseWidget().updateAll(appContext) }
+    suspend fun refreshWidget() {
+        runCatching { NurseWidget().updateAll(appContext) }
+        runCatching { wearSync.push(wearState()) }   // also mirror to the watch
+    }
+
+    suspend fun wearState(today: LocalDate = LocalDate.now()): WearState {
+        val todayKey = DayKey.from(today)
+        val profile = dao.assignment(todayKey)?.let { a -> dao.allProfilesOnce().firstOrNull { it.id == a.dutyProfileId } }
+        val items = if (profile != null) {
+            dao.allChecklistOnce().filter { it.dutyProfileId == profile.id && !it.isArchived }.sortedBy { it.sortOrder }
+        } else emptyList()
+        val checked = dao.allChecksOnce().filter { it.dayKey == todayKey }.map { it.checklistItemId }.toSet()
+        val (assigns, byId) = domainData()
+        val next = AlarmPlanner.plan(assigns, byId, LocalDateTime.now(), windowDays = 2, budget = 5).firstOrNull()
+        return WearState(
+            dayKey = todayKey, dutyName = profile?.name, colorHex = profile?.colorHex,
+            nextAlarm = next?.let { "${it.title} %02d:%02d".format(it.fireAt.hour, it.fireAt.minute) },
+            pendingMemos = dao.allMemosOnce().count { !it.isDone },
+            checklist = items.map { WearState.WearItem(it.id, it.text, checked.contains(it.id)) },
+        )
+    }
+
+    suspend fun applyWearCommand(cmd: WearCommand) {
+        when (cmd) {
+            is WearCommand.ToggleCheck -> toggleCheck(cmd.itemId, cmd.dayKey)
+            is WearCommand.AddMemo -> {
+                // idempotent: REPLACE on the watch-generated id so a re-delivered command can't duplicate
+                dao.upsertMemo(QuickMemoEntity(cmd.id, cmd.bedTag, cmd.text, false, System.currentTimeMillis()))
+                refreshWidget()
+            }
+        }
+    }
 
     suspend fun todaySnapshot(today: LocalDate = LocalDate.now()): TodayWidget {
         val todayKey = DayKey.from(today)

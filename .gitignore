@@ -5,3 +5,9 @@ DerivedData/
 *.xcodeproj/
 .build-device/
 App/Info-Device.plist
+# Android
+android/.gradle/
+android/build/
+android/**/build/
+android/local.properties
+android/captures/

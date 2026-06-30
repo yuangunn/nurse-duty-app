@@ -15,12 +15,21 @@ public enum NurseDutyStore {
         QuickMemo.self,
     ])
 
-    /// One shared container. `inMemory` is for tests/previews (no entitlement needed);
-    /// the real app uses the App Group container so widgets read the same store.
+    /// One shared container. `inMemory` is for tests/previews; the real (signed) app uses the
+    /// App Group container so widgets read the same store.
+    ///
+    /// We probe the App Group URL first because SwiftData calls `fatalError` (not throw) when the
+    /// entitlement is missing — so an unsigned dev build can't be caught, only avoided. If the
+    /// group container isn't active, fall back to a plain local store so the app still runs.
     public static func makeContainer(inMemory: Bool = false) throws -> ModelContainer {
-        let config: ModelConfiguration = inMemory
-            ? ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-            : ModelConfiguration(schema: schema, groupContainer: .identifier(appGroupID))
+        let config: ModelConfiguration
+        if inMemory {
+            config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        } else if FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) != nil {
+            config = ModelConfiguration(schema: schema, groupContainer: .identifier(appGroupID))
+        } else {
+            config = ModelConfiguration(schema: schema)   // ponytail: no App Group entitlement -> local store
+        }
         return try ModelContainer(for: schema, configurations: config)
     }
 }

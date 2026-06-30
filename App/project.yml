@@ -1,0 +1,30 @@
+name: NurseDuty
+options:
+  bundleIdPrefix: com.example.nurseduty
+  createIntermediateGroups: true
+  deploymentTarget:
+    iOS: "18.0"
+packages:
+  NurseDutyModel:
+    path: ../Modules/NurseDutyModel
+targets:
+  NurseDuty:
+    type: application
+    platform: iOS
+    sources:
+      - Sources
+    dependencies:
+      - package: NurseDutyModel
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.nurseduty.app
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        # ponytail: Swift 5 mode on the app target — keeps SwiftData/SwiftUI clear of
+        # strict-concurrency churn for now. Revisit when concurrency code arrives.
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_ENTITLEMENTS: Sources/NurseDuty.entitlements
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES

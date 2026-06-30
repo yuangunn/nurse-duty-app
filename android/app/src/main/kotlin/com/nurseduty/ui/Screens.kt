@@ -184,7 +184,8 @@ fun CalendarScreen(vm: NurseViewModel) {
                 Column {
                     profiles.filter { !it.isArchived }.forEach { p ->
                         Row(Modifier.fillMaxWidth().clickable {
-                            vm.assign(pk, p.id); pickKey = null
+                            vm.assign(pk, p.id)
+                            pickKey = DayKey.from(DayKey.toLocalDate(pk).plusDays(1))  // 연속 입력: 다음 날로
                         }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(12.dp).clip(CircleShape).background(colorFromHex(p.colorHex)))
                             Spacer(Modifier.width(8.dp))

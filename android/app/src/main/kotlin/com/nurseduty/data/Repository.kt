@@ -203,7 +203,7 @@ class Repository(
         data class P(val name: String, val color: String,
                      val alarms: List<Triple<String, Pair<Int, Int>, Int>>, val checklist: List<String>)
         val presets = listOf(
-            P("Day", "#4F86C6", listOf(Triple("기상", 6 to 0, 0), Triple("인계", 7 to 0, 0)),
+            P("Day", "#4F86C6", listOf(Triple("인계", 7 to 0, 0)),
                 listOf("활력징후 측정", "오전 투약 확인", "인계 준비")),
             P("Evening", "#E8A33D", listOf(Triple("출근 준비", 14 to 0, 0), Triple("인계", 15 to 0, 0)),
                 listOf("활력징후 측정", "저녁 투약 확인", "인계 준비")),

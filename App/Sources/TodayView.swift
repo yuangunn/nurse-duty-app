@@ -10,6 +10,7 @@ struct TodayView: View {
     @Query(sort: \DutyProfile.sortOrder) private var profiles: [DutyProfile]
     @Query private var checks: [ChecklistCheck]
     @State private var dayToken = 0   // bumped at the date boundary so "today" rolls over while foregrounded
+    @State private var showSettings = false
 
     private let cal = Calendar.current
     private var today: Date { cal.startOfDay(for: Date()) }
@@ -35,6 +36,17 @@ struct TodayView: View {
                 }
             }
             .navigationTitle(todayTitle)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { showSettings = true } label: { Image(systemName: "gearshape") }
+                }
+            }
+            .sheet(isPresented: $showSettings) { SettingsView() }
+            .onAppear {
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("--open-settings") { showSettings = true }
+                #endif
+            }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
                 dayToken &+= 1
             }

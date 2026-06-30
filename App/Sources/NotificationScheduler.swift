@@ -12,6 +12,9 @@ enum NotificationScheduler {
     static let budget = 50      // ponytail: < iOS's 64-pending cap, with headroom.
 
     static func requestAuthorization() async {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--seed-demo") { return }  // no prompt in verify/screenshot mode
+        #endif
         _ = try? await UNUserNotificationCenter.current()
             .requestAuthorization(options: [.alert, .sound, .badge])
     }

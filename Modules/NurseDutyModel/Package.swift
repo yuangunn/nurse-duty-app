@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "NurseDutyModel",
-    platforms: [.iOS(.v18), .macOS(.v15)],
+    platforms: [.iOS(.v18), .watchOS(.v11), .macOS(.v15)],
     products: [
         .library(name: "NurseDutyModel", targets: ["NurseDutyModel"]),
     ],

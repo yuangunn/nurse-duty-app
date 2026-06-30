@@ -16,6 +16,7 @@ targets:
     dependencies:
       - package: NurseDutyModel
       - target: NurseDutyWidget       # embed the widget extension
+      - target: NurseDutyWatch        # embed the watchOS companion app
     info:
       path: Info-App.plist
       properties:
@@ -54,3 +55,26 @@ targets:
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_ENTITLEMENTS: Widget/NurseDutyWidget.entitlements
+  NurseDutyWatch:
+    type: application
+    platform: watchOS
+    deploymentTarget: "11.0"
+    sources:
+      - WatchApp
+      - path: Sources/WidgetUI.swift   # shared Color(hex:) + accessory views
+    dependencies:
+      - package: NurseDutyModel
+    info:
+      path: Info-Watch.plist
+      properties:
+        WKApplication: true                                       # single-target watch app
+        WKCompanionAppBundleIdentifier: com.example.nurseduty.app
+        CFBundleDisplayName: NurseDuty
+        UIDeviceFamily: [4]                                       # Apple Watch (explicit plist doesn't auto-inject)
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.nurseduty.app.watchkitapp
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "4"

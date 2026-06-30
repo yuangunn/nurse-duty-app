@@ -21,12 +21,17 @@
 cd Modules/NurseDutyModel && swift test
 
 # 앱 빌드 + 시뮬레이터 실행 (App Group entitlement 때문에 ad-hoc 서명 필요)
+# 주의: -sdk는 쓰지 말 것 — 모든 타깃을 iOS로 강제해 임베드된 watchOS 앱이 잘못 빌드됨.
+#       -destination만 쓰면 각 타깃이 제 SDK(iOS/watchOS)로 빌드됨.
 cd App && xcodegen generate
-xcodebuild -project NurseDuty.xcodeproj -scheme NurseDuty -sdk iphonesimulator \
+xcodebuild -project NurseDuty.xcodeproj -scheme NurseDuty \
   -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath .build \
   build CODE_SIGN_IDENTITY="-" CODE_SIGNING_ALLOWED=YES
 xcrun simctl install booted .build/Build/Products/Debug-iphonesimulator/NurseDuty.app
 xcrun simctl launch booted com.example.nurseduty.app
+
+# 워치 앱(임베드본)을 워치 시뮬에 설치:
+#   xcrun simctl install <watch-udid> .build/Build/Products/Debug-iphonesimulator/NurseDuty.app/Watch/NurseDutyWatch.app
 ```
 DEBUG 검증 런치 인자: `--seed-demo`(한 달치+샘플 메모 시드, 권한팝업 skip), `--tab-memo`, `--open-settings`.
 

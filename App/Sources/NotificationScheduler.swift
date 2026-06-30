@@ -56,10 +56,12 @@ enum NotificationScheduler {
 func rearm(_ context: ModelContext) {
     Task { await NotificationScheduler.reconcile(context: context) }
     WidgetCenter.shared.reloadAllTimelines()
+    PhoneConnectivity.shared.push()
 }
 
-/// Refresh widgets after a write that doesn't touch alarms (checklist tick, memo add/done).
+/// Refresh widgets + watch after a write that doesn't touch alarms (checklist tick, memo add/done).
 @MainActor
 func refreshWidgets() {
     WidgetCenter.shared.reloadAllTimelines()
+    PhoneConnectivity.shared.push()
 }

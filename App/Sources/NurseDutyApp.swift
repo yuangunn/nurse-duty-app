@@ -16,6 +16,7 @@ struct NurseDutyApp: App {
         }
         container = c
         PresetSeeder.seedIfEmpty(ModelContext(c))
+        PhoneConnectivity.shared.start(container: c)   // watch sync
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--seed-demo") {
             DemoSeed.fillNext35Days(ModelContext(c))

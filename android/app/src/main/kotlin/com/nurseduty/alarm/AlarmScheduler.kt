@@ -42,9 +42,12 @@ class AlarmScheduler(
         val desired = AlarmPlanner.plan(assignments, profilesById, LocalDateTime.now(), windowDays = 14, budget = 50)
         val pending = prefs.getStringSet(KEY, emptySet())?.toSet() ?: emptySet()
         val (schedule, cancel) = AlarmPlanner.reconcile(pending, desired)
-        cancel.forEach { cancelById(it) }
-        schedule.forEach { scheduleOne(it) }
-        prefs.edit().putStringSet(KEY, desired.map { it.id }.toSet()).apply()
+        cancel.forEach { runCatching { cancelById(it) } }
+        // record only ids actually armed, so a throw mid-batch can't leave prefs claiming more
+        // than what's scheduled (next reschedule re-tries the un-armed ones, which stay in desired).
+        val armed = mutableSetOf<String>()
+        schedule.forEach { p -> if (runCatching { scheduleOne(p) }.isSuccess) armed.add(p.id) }
+        prefs.edit().putStringSet(KEY, armed).apply()
     }
 
     private fun scheduleOne(p: PlannedAlarm) {

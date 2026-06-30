@@ -8,7 +8,7 @@ import androidx.core.app.NotificationCompat
 import com.nurseduty.NurseApp
 import kotlinx.coroutines.launch
 
-/** Posts the notification when a scheduled alarm fires. */
+/** Posts the notification when a scheduled alarm fires, then pulls the rolling window forward. */
 class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val title = intent.getStringExtra("title") ?: "근무 알림"
@@ -24,6 +24,12 @@ class AlarmReceiver : BroadcastReceiver() {
             .build()
         context.getSystemService(NotificationManager::class.java)
             .notify((intent.getStringExtra("id") ?: title).hashCode(), notification)
+
+        // self-chain: re-arm so alarms beyond the rolling window get scheduled even if the app
+        // is never opened for >window days.
+        val pending = goAsync()
+        val app = context.applicationContext as NurseApp
+        app.scope.launch { try { app.repository.rescheduleNow() } finally { pending.finish() } }
     }
 }
 

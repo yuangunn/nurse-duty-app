@@ -2,6 +2,9 @@
 
 package com.nurseduty.ui
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -19,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
@@ -45,7 +49,7 @@ fun AppRoot(vm: NurseViewModel) {
     Scaffold(bottomBar = {
         NavigationBar {
             val tabs = listOf("오늘" to Icons.Default.Checklist, "근무표" to Icons.Default.CalendarMonth,
-                "듀티" to Icons.Default.Group, "메모" to Icons.Default.EditNote)
+                "듀티" to Icons.Default.Group, "메모" to Icons.Default.EditNote, "설정" to Icons.Default.Settings)
             tabs.forEachIndexed { i, (label, icon) ->
                 NavigationBarItem(selected = tab == i, onClick = { tab = i },
                     icon = { Icon(icon, label) }, label = { Text(label) })
@@ -57,7 +61,8 @@ fun AppRoot(vm: NurseViewModel) {
                 0 -> TodayScreen(vm)
                 1 -> CalendarScreen(vm)
                 2 -> DutyTab(vm)
-                else -> MemoScreen(vm)
+                3 -> MemoScreen(vm)
+                else -> SettingsScreen(vm)
             }
         }
     }
@@ -117,19 +122,20 @@ fun TodayScreen(vm: NurseViewModel) {
 fun CalendarScreen(vm: NurseViewModel) {
     val profiles by vm.profiles.collectAsStateWithLifecycle()
     val assignments by vm.assignments.collectAsStateWithLifecycle()
-    var month by remember { mutableStateOf(YearMonth.now()) }
-    var pick by remember { mutableStateOf<LocalDate?>(null) }
+    var monthKey by rememberSaveable { mutableStateOf(YearMonth.now().run { year * 100 + monthValue }) }
+    val month = YearMonth.of(monthKey / 100, monthKey % 100)
+    var pickKey by rememberSaveable { mutableStateOf<Int?>(null) }
     val byDay = assignments.associateBy { it.dayKey }
     val profileById = profiles.associateBy { it.id }
 
     Scaffold(topBar = { TopAppBar(title = { Text("근무표") }) }) { pad ->
         Column(Modifier.padding(pad).padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { month = month.minusMonths(1) }) { Icon(Icons.Default.ChevronLeft, "이전") }
+                IconButton(onClick = { monthKey = month.minusMonths(1).run { year * 100 + monthValue } }) { Icon(Icons.Default.ChevronLeft, "이전") }
                 Spacer(Modifier.weight(1f))
                 Text("${month.year}년 ${month.monthValue}월", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.weight(1f))
-                IconButton(onClick = { month = month.plusMonths(1) }) { Icon(Icons.Default.ChevronRight, "다음") }
+                IconButton(onClick = { monthKey = month.plusMonths(1).run { year * 100 + monthValue } }) { Icon(Icons.Default.ChevronRight, "다음") }
             }
             Row {
                 listOf("일", "월", "화", "수", "목", "금", "토").forEach {
@@ -147,7 +153,7 @@ fun CalendarScreen(vm: NurseViewModel) {
                             Box(Modifier.weight(1f).height(54.dp).padding(2.dp)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(if (day != null) Color(0x11000000) else Color.Transparent)
-                                .clickable(enabled = day != null) { pick = day }) {
+                                .clickable(enabled = day != null) { day?.let { pickKey = DayKey.from(it) } }) {
                                 if (day != null) {
                                     val a = byDay[DayKey.from(day)]
                                     val p = a?.let { profileById[it.dutyProfileId] }
@@ -167,17 +173,18 @@ fun CalendarScreen(vm: NurseViewModel) {
         }
     }
 
-    val day = pick
-    if (day != null) {
-        val current = byDay[DayKey.from(day)]
+    val pk = pickKey
+    if (pk != null) {
+        val day = DayKey.toLocalDate(pk)
+        val current = byDay[pk]
         AlertDialog(
-            onDismissRequest = { pick = null },
+            onDismissRequest = { pickKey = null },
             title = { Text("${day.monthValue}월 ${day.dayOfMonth}일") },
             text = {
                 Column {
                     profiles.filter { !it.isArchived }.forEach { p ->
                         Row(Modifier.fillMaxWidth().clickable {
-                            vm.assign(DayKey.from(day), p.id); pick = null
+                            vm.assign(pk, p.id); pickKey = null
                         }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(12.dp).clip(CircleShape).background(colorFromHex(p.colorHex)))
                             Spacer(Modifier.width(8.dp))
@@ -189,9 +196,9 @@ fun CalendarScreen(vm: NurseViewModel) {
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { pick = null }) { Text("닫기") } },
+            confirmButton = { TextButton(onClick = { pickKey = null }) { Text("닫기") } },
             dismissButton = {
-                if (current != null) TextButton(onClick = { vm.clearAssign(DayKey.from(day)); pick = null }) { Text("지우기") }
+                if (current != null) TextButton(onClick = { vm.clearAssign(pk); pickKey = null }) { Text("지우기") }
             },
         )
     }
@@ -199,7 +206,7 @@ fun CalendarScreen(vm: NurseViewModel) {
 
 @Composable
 fun DutyTab(vm: NurseViewModel) {
-    var selected by remember { mutableStateOf<String?>(null) }
+    var selected by rememberSaveable { mutableStateOf<String?>(null) }
     if (selected == null) DutyListScreen(vm) { selected = it }
     else DutyDetailScreen(vm, selected!!) { selected = null }
 }
@@ -352,6 +359,66 @@ private fun MemoRow(m: QuickMemoEntity, vm: NurseViewModel) {
         trailingContent = { IconButton(onClick = { vm.deleteMemo(m) }) { Icon(Icons.Default.Delete, "삭제") } },
     )
     HorizontalDivider()
+}
+
+@Composable
+fun SettingsScreen(vm: NurseViewModel) {
+    val context = LocalContext.current
+    val profiles by vm.profiles.collectAsStateWithLifecycle()
+    val assignments by vm.assignments.collectAsStateWithLifecycle()
+    var message by remember { mutableStateOf<String?>(null) }
+
+    val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) vm.export(uri, context.contentResolver) { ok -> message = if (ok) "내보내기 완료" else "내보내기 실패" }
+    }
+    val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.import(uri, context.contentResolver) { ok -> message = if (ok) "복원 완료" else "복원 실패" }
+    }
+    message?.let { msg ->
+        LaunchedEffect(msg) { Toast.makeText(context, msg, Toast.LENGTH_SHORT).show(); message = null }
+    }
+
+    // this month per-duty counts
+    val ym = YearMonth.now().let { it.year * 10000 + it.monthValue * 100 }
+    val profileById = profiles.associateBy { it.id }
+    val counts = assignments.filter { it.dayKey in ym..(ym + 99) }
+        .groupingBy { it.dutyProfileId }.eachCount()
+
+    Scaffold(topBar = { TopAppBar(title = { Text("설정") }) }) { pad ->
+        LazyColumn(Modifier.padding(pad)) {
+            item { SectionHeader("이번 달") }
+            if (counts.isEmpty()) {
+                item { Text("이번 달 배정 없음", Modifier.padding(16.dp), color = Color.Gray) }
+            } else {
+                profiles.forEach { p ->
+                    val n = counts[p.id] ?: 0
+                    if (n > 0) item(key = p.id) {
+                        ListItem(
+                            headlineContent = { Text(p.name) },
+                            leadingContent = { Box(Modifier.size(12.dp).clip(CircleShape).background(colorFromHex(p.colorHex))) },
+                            trailingContent = { Text("${n}일", color = Color.Gray) },
+                        )
+                    }
+                }
+            }
+            item { SectionHeader("백업") }
+            item {
+                ListItem(
+                    headlineContent = { Text("내보내기 (JSON)") },
+                    leadingContent = { Icon(Icons.Default.Upload, null) },
+                    modifier = Modifier.clickable { exporter.launch("NurseDuty-backup.json") },
+                )
+            }
+            item {
+                ListItem(
+                    headlineContent = { Text("불러오기 (복원)") },
+                    supportingContent = { Text("현재 데이터를 덮어씁니다") },
+                    leadingContent = { Icon(Icons.Default.Download, null) },
+                    modifier = Modifier.clickable { importer.launch(arrayOf("application/json")) },
+                )
+            }
+        }
+    }
 }
 
 @Composable

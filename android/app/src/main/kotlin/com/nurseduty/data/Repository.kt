@@ -1,12 +1,33 @@
 package com.nurseduty.data
 
+import android.content.Context
+import androidx.glance.appwidget.updateAll
+import androidx.room.withTransaction
 import com.nurseduty.alarm.AlarmScheduler
+import com.nurseduty.domain.AlarmPlanner
 import com.nurseduty.domain.AlarmSpec
+import com.nurseduty.domain.DayKey
 import com.nurseduty.domain.DutyProfile
 import com.nurseduty.domain.ShiftAssignment
+import com.nurseduty.widget.NurseWidget
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.time.LocalDate
+import java.time.LocalDateTime
 import java.util.UUID
 
-class Repository(private val dao: NurseDao, private val scheduler: AlarmScheduler) {
+data class TodayWidget(
+    val dutyName: String?, val colorHex: String?,
+    val done: Int, val total: Int, val pendingMemos: Int, val nextAlarm: String?,
+)
+
+class Repository(
+    private val db: AppDatabase,
+    private val scheduler: AlarmScheduler,
+    private val appContext: Context,
+) {
+    private val dao = db.dao()
+    private val rescheduleMutex = Mutex()
 
     val profiles = dao.profiles()
     val alarms = dao.alarms()
@@ -31,6 +52,7 @@ class Repository(private val dao: NurseDao, private val scheduler: AlarmSchedule
         val existing = dao.check(itemId, dayKey)
         if (existing != null) dao.deleteCheck(existing)
         else dao.insertCheck(ChecklistCheckEntity(UUID.randomUUID().toString(), itemId, dayKey, System.currentTimeMillis()))
+        refreshWidget()
     }
 
     // ---- profiles / alarms / checklist templates ----
@@ -55,18 +77,20 @@ class Repository(private val dao: NurseDao, private val scheduler: AlarmSchedule
     suspend fun deleteAlarm(a: AlarmEntity) { dao.deleteAlarm(a); rescheduleNow() }
     suspend fun newAlarmId() = UUID.randomUUID().toString()
 
-    suspend fun saveChecklistItem(i: ChecklistItemEntity) = dao.upsertChecklistItem(i)
-    suspend fun archiveChecklistItem(i: ChecklistItemEntity) = dao.upsertChecklistItem(i.copy(isArchived = true))
+    suspend fun saveChecklistItem(i: ChecklistItemEntity) { dao.upsertChecklistItem(i); refreshWidget() }
+    suspend fun archiveChecklistItem(i: ChecklistItemEntity) { dao.upsertChecklistItem(i.copy(isArchived = true)); refreshWidget() }
     suspend fun newChecklistId() = UUID.randomUUID().toString()
 
     // ---- memos ----
-    suspend fun addMemo(bedTag: String, text: String) =
+    suspend fun addMemo(bedTag: String, text: String) {
         dao.upsertMemo(QuickMemoEntity(UUID.randomUUID().toString(), bedTag, text, false, System.currentTimeMillis()))
-    suspend fun setMemoDone(m: QuickMemoEntity, done: Boolean) = dao.upsertMemo(m.copy(isDone = done))
-    suspend fun deleteMemo(m: QuickMemoEntity) = dao.deleteMemo(m)
+        refreshWidget()
+    }
+    suspend fun setMemoDone(m: QuickMemoEntity, done: Boolean) { dao.upsertMemo(m.copy(isDone = done)); refreshWidget() }
+    suspend fun deleteMemo(m: QuickMemoEntity) { dao.deleteMemo(m); refreshWidget() }
 
-    // ---- scheduling ----
-    suspend fun rescheduleNow() {
+    // ---- scheduling + widget ----
+    private suspend fun domainData(): Pair<List<ShiftAssignment>, Map<String, DutyProfile>> {
         val profiles = dao.allProfilesOnce()
         val alarmsByProfile = dao.allAlarmsOnce().groupBy { it.dutyProfileId }
         val byId = profiles.associate { p ->
@@ -78,7 +102,64 @@ class Repository(private val dao: NurseDao, private val scheduler: AlarmSchedule
             )
         }
         val assigns = dao.allAssignmentsOnce().map { ShiftAssignment(it.dayKey, it.dutyProfileId) }
+        return assigns to byId
+    }
+
+    // serialized so two rapid mutations can't interleave snapshots and re-arm a just-removed alarm
+    suspend fun rescheduleNow() = rescheduleMutex.withLock {
+        val (assigns, byId) = domainData()
         scheduler.reschedule(assigns, byId)
+        refreshWidget()
+    }
+
+    suspend fun refreshWidget() = runCatching { NurseWidget().updateAll(appContext) }
+
+    suspend fun todaySnapshot(today: LocalDate = LocalDate.now()): TodayWidget {
+        val todayKey = DayKey.from(today)
+        val profile = dao.assignment(todayKey)?.let { a -> dao.allProfilesOnce().firstOrNull { it.id == a.dutyProfileId } }
+        val items = if (profile != null) dao.allChecklistOnce().filter { it.dutyProfileId == profile.id && !it.isArchived } else emptyList()
+        val checkedToday = dao.allChecksOnce().filter { it.dayKey == todayKey }.map { it.checklistItemId }.toSet()
+        val (assigns, byId) = domainData()
+        val next = AlarmPlanner.plan(assigns, byId, LocalDateTime.now(), windowDays = 2, budget = 5).firstOrNull()
+        return TodayWidget(
+            dutyName = profile?.name, colorHex = profile?.colorHex,
+            done = items.count { checkedToday.contains(it.id) }, total = items.size,
+            pendingMemos = dao.allMemosOnce().count { !it.isDone },
+            nextAlarm = next?.let { "${it.title} %02d:%02d".format(it.fireAt.hour, it.fireAt.minute) },
+        )
+    }
+
+    // ---- backup ----
+    suspend fun exportBackup(): String = Backup.encode(
+        Backup(
+            version = 1,
+            profiles = dao.allProfilesOnce(),
+            alarms = dao.allAlarmsOnce(),
+            checklist = dao.allChecklistOnce(),
+            checks = dao.allChecksOnce(),
+            assignments = dao.allAssignmentsOnce(),
+            memos = dao.allMemosOnce(),
+        ),
+    )
+
+    suspend fun importBackup(jsonStr: String): Boolean {
+        val b = runCatching { Backup.decode(jsonStr) }.getOrNull() ?: return false
+        // Atomic: a process kill / I/O error / constraint-violating row rolls back instead of
+        // leaving the store wiped with a partial restore (no data loss).
+        val ok = runCatching {
+            db.withTransaction {
+                dao.clearChecks(); dao.clearAssignments(); dao.clearMemos()
+                dao.clearAlarms(); dao.clearChecklist(); dao.clearProfiles()
+                b.profiles.forEach { dao.upsertProfile(it) }
+                b.alarms.forEach { dao.upsertAlarm(it) }
+                b.checklist.forEach { dao.upsertChecklistItem(it) }
+                b.checks.forEach { dao.insertCheck(it) }
+                b.assignments.forEach { dao.upsertAssignment(it) }
+                b.memos.forEach { dao.upsertMemo(it) }
+            }
+        }.isSuccess
+        if (ok) rescheduleNow()
+        return ok
     }
 
     suspend fun seedPresetsIfEmpty() {

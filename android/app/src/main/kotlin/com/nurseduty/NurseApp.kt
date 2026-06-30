@@ -19,7 +19,7 @@ class NurseApp : Application() {
         super.onCreate()
         val db = Room.databaseBuilder(this, AppDatabase::class.java, "nurseduty.db").build()
         val scheduler = AlarmScheduler(this, getSharedPreferences("sched", MODE_PRIVATE))
-        repository = Repository(db.dao(), scheduler)
+        repository = Repository(db, scheduler, this)
         scope.launch {
             repository.seedPresetsIfEmpty()
             repository.rescheduleNow()

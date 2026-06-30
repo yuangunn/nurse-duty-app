@@ -1,6 +1,8 @@
 package com.nurseduty.ui
 
 import android.app.Application
+import android.content.ContentResolver
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.nurseduty.NurseApp
@@ -47,6 +49,19 @@ class NurseViewModel(app: Application) : AndroidViewModel(app) {
     fun addMemo(bed: String, text: String) = go { repo.addMemo(bed, text) }
     fun setMemoDone(m: QuickMemoEntity, done: Boolean) = go { repo.setMemoDone(m, done) }
     fun deleteMemo(m: QuickMemoEntity) = go { repo.deleteMemo(m) }
+
+    fun export(uri: Uri, resolver: ContentResolver, onDone: (Boolean) -> Unit) = viewModelScope.launch {
+        val ok = runCatching {
+            val json = repo.exportBackup()
+            resolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
+        }.isSuccess
+        onDone(ok)
+    }
+
+    fun import(uri: Uri, resolver: ContentResolver, onDone: (Boolean) -> Unit) = viewModelScope.launch {
+        val text = runCatching { resolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } }.getOrNull()
+        onDone(text != null && repo.importBackup(text))
+    }
 
     private fun go(block: suspend () -> Unit) = viewModelScope.launch { block() }
 }

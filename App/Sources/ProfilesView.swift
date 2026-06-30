@@ -5,7 +5,6 @@ import NurseDutyModel
 struct ProfilesView: View {
     @Environment(\.modelContext) private var ctx
     @Query(sort: \DutyProfile.sortOrder) private var profiles: [DutyProfile]
-    @State private var editing: DutyProfile?
     @State private var creatingNew = false
 
     private var active: [DutyProfile] { profiles.filter { !$0.isArchived } }
@@ -14,7 +13,7 @@ struct ProfilesView: View {
         NavigationStack {
             List {
                 ForEach(active) { p in
-                    Button { editing = p } label: { row(p) }
+                    NavigationLink { DutyDetailView(profile: p) } label: { row(p) }
                 }
                 .onDelete(perform: archive)
             }
@@ -24,7 +23,6 @@ struct ProfilesView: View {
                     Button { creatingNew = true } label: { Image(systemName: "plus") }
                 }
             }
-            .sheet(item: $editing) { p in ProfileEditor(profile: p) }
             .sheet(isPresented: $creatingNew) { ProfileEditor(profile: nil) }
         }
     }
@@ -43,6 +41,7 @@ struct ProfilesView: View {
     private func archive(_ idx: IndexSet) {
         for i in idx { active[i].isArchived = true }
         try? ctx.save()
+        rearm(ctx)   // archived duty's future alarms must be pulled
     }
 }
 

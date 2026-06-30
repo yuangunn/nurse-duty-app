@@ -45,3 +45,22 @@ enum PresetSeeder {
                checklist: ["인력 배치 확인", "중환자 파악", "입퇴원 조율", "팀 인계"]),
     ]
 }
+
+#if DEBUG
+/// Verification seam: `--seed-demo` fills the next 35 days with Day shifts so the rolling
+/// scheduler can be exercised against iOS's 64-pending cap on the real OS. Dev-only.
+enum DemoSeed {
+    static func fillNext35Days(_ ctx: ModelContext) {
+        guard let day = (try? ctx.fetch(FetchDescriptor<DutyProfile>()))?.first(where: { $0.name == "Day" })
+        else { return }
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        for d in 0..<35 {
+            if let date = cal.date(byAdding: .day, value: d, to: today) {
+                _ = try? Assignments.upsert(in: ctx, date: date, dutyProfileId: day.id)
+            }
+        }
+        try? ctx.save()
+    }
+}
+#endif

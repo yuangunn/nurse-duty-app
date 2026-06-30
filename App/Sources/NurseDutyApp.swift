@@ -16,6 +16,11 @@ struct NurseDutyApp: App {
         }
         container = c
         PresetSeeder.seedIfEmpty(ModelContext(c))
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--seed-demo") {
+            DemoSeed.fillNext35Days(ModelContext(c))
+        }
+        #endif
     }
 
     var body: some Scene {

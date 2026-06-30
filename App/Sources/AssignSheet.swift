@@ -79,10 +79,12 @@ struct AssignSheet: View {
     private func assign(_ p: DutyProfile) {
         _ = try? Assignments.upsert(in: ctx, date: date, dutyProfileId: p.id)
         try? ctx.save()
+        rearm(ctx)
     }
     private func clear() {
         try? Assignments.clear(in: ctx, date: date)
         try? ctx.save()
+        rearm(ctx)
     }
     private func timeText(_ a: AlarmItem) -> String {
         let s = String(format: "%02d:%02d", a.hour, a.minute)

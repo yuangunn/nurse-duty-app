@@ -1,5 +1,6 @@
 import Foundation
 import UserNotifications
+import WidgetKit
 import SwiftData
 import NurseDutyModel
 
@@ -50,8 +51,15 @@ enum NotificationScheduler {
     }
 }
 
-/// Fire-and-forget re-arm from a main-actor view after an edit.
+/// Fire-and-forget re-arm + widget refresh from a main-actor view after an edit that changes alarms.
 @MainActor
 func rearm(_ context: ModelContext) {
     Task { await NotificationScheduler.reconcile(context: context) }
+    WidgetCenter.shared.reloadAllTimelines()
+}
+
+/// Refresh widgets after a write that doesn't touch alarms (checklist tick, memo add/done).
+@MainActor
+func refreshWidgets() {
+    WidgetCenter.shared.reloadAllTimelines()
 }

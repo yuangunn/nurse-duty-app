@@ -112,6 +112,7 @@ struct TodayView: View {
     private func toggle(_ item: ChecklistItem) {
         Checklist.toggle(item.id, on: today, in: ctx)
         try? ctx.save()
+        refreshWidgets()
     }
     private func timeText(_ a: AlarmItem) -> String {
         let s = String(format: "%02d:%02d", a.hour, a.minute)

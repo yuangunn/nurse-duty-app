@@ -57,9 +57,9 @@ struct MemoView: View {
         }
         .swipeActions(edge: .leading) {
             if memo.isDone {
-                Button { memo.isDone = false; try? ctx.save() } label: { Label("되돌리기", systemImage: "arrow.uturn.left") }
+                Button { memo.isDone = false; try? ctx.save(); refreshWidgets() } label: { Label("되돌리기", systemImage: "arrow.uturn.left") }
             } else {
-                Button { memo.isDone = true; try? ctx.save() } label: { Label("완료", systemImage: "checkmark") }.tint(.green)
+                Button { memo.isDone = true; try? ctx.save(); refreshWidgets() } label: { Label("완료", systemImage: "checkmark") }.tint(.green)
             }
         }
     }
@@ -67,6 +67,7 @@ struct MemoView: View {
     private func delete(_ idx: IndexSet, from list: [QuickMemo]) {
         for i in idx { ctx.delete(list[i]) }
         try? ctx.save()
+        refreshWidgets()
     }
     private func timeText(_ d: Date) -> String {
         let f = DateFormatter(); f.locale = Locale(identifier: "ko_KR"); f.dateFormat = "M/d HH:mm"
@@ -118,6 +119,7 @@ struct MemoCaptureSheet: View {
         ctx.insert(QuickMemo(bedTag: bedTag.trimmingCharacters(in: .whitespaces),
                              text: note.trimmingCharacters(in: .whitespaces)))
         try? ctx.save()
+        refreshWidgets()
         dismiss()
     }
 }

@@ -15,16 +15,42 @@ targets:
       - Sources
     dependencies:
       - package: NurseDutyModel
+      - target: NurseDutyWidget       # embed the widget extension
+    info:
+      path: Info-App.plist
+      properties:
+        UILaunchScreen: {}
+        CFBundleURLTypes:
+          - CFBundleURLName: com.example.nurseduty
+            CFBundleURLSchemes: [nurseduty]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.nurseduty.app
         MARKETING_VERSION: "0.1"
         CURRENT_PROJECT_VERSION: "1"
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        # ponytail: Swift 5 mode on the app target — keeps SwiftData/SwiftUI clear of
-        # strict-concurrency churn for now. Revisit when concurrency code arrives.
+        # ponytail: Swift 5 mode — keeps SwiftData/SwiftUI clear of strict-concurrency churn.
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_ENTITLEMENTS: Sources/NurseDuty.entitlements
-        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+  NurseDutyWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Widget
+      - path: Sources/WidgetUI.swift   # shared view code (also compiled into the app)
+    dependencies:
+      - package: NurseDutyModel
+    info:
+      path: Info-Widget.plist
+      properties:
+        CFBundleDisplayName: NurseDuty
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.nurseduty.app.widget
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_ENTITLEMENTS: Widget/NurseDutyWidget.entitlements

@@ -32,5 +32,8 @@ struct RootView: View {
             if ProcessInfo.processInfo.arguments.contains("--tab-memo") { selection = 3 }
             #endif
         }
+        .onOpenURL { url in
+            if url.host == "memo" { selection = 3 }   // widget tap -> 메모 탭 (캡처 한 탭 거리)
+        }
     }
 }

@@ -24,7 +24,17 @@ struct NurseDutyApp: App {
     }
 
     var body: some Scene {
-        WindowGroup { RootView() }
-            .modelContainer(container)
+        WindowGroup {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--preview-widget") {
+                WidgetPreviewView()
+            } else {
+                RootView()
+            }
+            #else
+            RootView()
+            #endif
+        }
+        .modelContainer(container)
     }
 }

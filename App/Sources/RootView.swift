@@ -7,6 +7,8 @@ struct RootView: View {
 
     var body: some View {
         TabView {
+            TodayView()
+                .tabItem { Label("오늘", systemImage: "checklist") }
             CalendarView()
                 .tabItem { Label("근무표", systemImage: "calendar") }
             ProfilesView()

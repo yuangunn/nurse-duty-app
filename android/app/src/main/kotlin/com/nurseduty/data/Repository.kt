@@ -136,11 +136,13 @@ class Repository(
     suspend fun wearState(today: LocalDate = LocalDate.now()): WearState {
         val todayKey = DayKey.from(today)
         val (profile, items) = todayItems(todayKey)
+        val charge = dao.assignment(todayKey)?.charge == true && profile != null && ChargeRules.chargeable(profile.kind)
         val checked = dao.allChecksOnce().filter { it.dayKey == todayKey }.map { it.checklistItemId }.toSet()
         val (assigns, byId) = domainData()
         val next = AlarmPlanner.plan(assigns, byId, LocalDateTime.now(), windowDays = 2, budget = 5).firstOrNull()
         return WearState(
-            dayKey = todayKey, dutyName = profile?.name, colorHex = profile?.colorHex,
+            dayKey = todayKey, dutyName = profile?.name, kind = profile?.kind ?: "None",
+            colorHex = profile?.colorHex, timeText = profile?.timeText, charge = charge,
             nextAlarm = next?.let { "${it.title} %02d:%02d".format(it.fireAt.hour, it.fireAt.minute) },
             pendingMemos = dao.allMemosOnce().count { !it.isDone },
             checklist = items.map { WearState.WearItem(it.first, it.second, checked.contains(it.first)) },

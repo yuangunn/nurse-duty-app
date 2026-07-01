@@ -9,7 +9,10 @@ import kotlinx.serialization.json.Json
 data class WearState(
     val dayKey: Int = 0,
     val dutyName: String? = null,
+    val kind: String = "None",
     val colorHex: String? = null,
+    val timeText: String? = null,
+    val charge: Boolean = false,
     val nextAlarm: String? = null,
     val pendingMemos: Int = 0,
     val checklist: List<WearItem> = emptyList(),

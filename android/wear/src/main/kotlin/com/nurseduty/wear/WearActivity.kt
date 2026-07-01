@@ -6,7 +6,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -15,12 +22,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.material.Chip
 import androidx.wear.compose.material.ChipDefaults
-import androidx.wear.compose.material.ListHeader
+import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Scaffold
 import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.ToggleChip
@@ -101,9 +112,24 @@ fun WearApp() {
     Scaffold {
         ScalingLazyColumn(Modifier.fillMaxWidth()) {
             item {
-                ListHeader { Text(state.dutyName ?: "오늘 근무 없음") }
+                val done = state.checklist.count { it.checked }
+                val total = state.checklist.size
+                Column(Modifier.fillMaxWidth().padding(6.dp).clip(RoundedCornerShape(18.dp))
+                    .background(WearStyle.gradient(state.kind)).padding(horizontal = 14.dp, vertical = 12.dp)) {
+                    Text(
+                        if (state.dutyName == null) "오늘 근무 없음" else "${state.dutyName} · ${WearStyle.ko(state.kind)}",
+                        style = MaterialTheme.typography.title3, color = Color.White, fontWeight = FontWeight.Bold,
+                    )
+                    if (state.charge) Text("👑 차지 · 팀 리더", style = MaterialTheme.typography.caption2, color = Color(0xFFFFE49B))
+                    if (state.kind != "None") state.timeText?.let {
+                        Text(it, style = MaterialTheme.typography.caption2, color = Color.White.copy(0.9f))
+                    }
+                    Row(Modifier.padding(top = 3.dp)) {
+                        if (total > 0) Text("$done/$total 완료", style = MaterialTheme.typography.caption2, color = Color.White)
+                        state.nextAlarm?.let { Spacer(Modifier.width(8.dp)); Text("⏰ $it", style = MaterialTheme.typography.caption3, color = Color.White.copy(0.9f)) }
+                    }
+                }
             }
-            state.nextAlarm?.let { na -> item { Text("⏰ $na") } }
             items(state.checklist, key = { it.id }) { c ->
                 ToggleChip(
                     checked = c.checked,
@@ -113,15 +139,15 @@ fun WearApp() {
                         })
                         send(WearCommand.ToggleCheck(c.id, state.dayKey))
                     },
-                    label = { Text(c.text) },
-                    toggleControl = {},
+                    label = { Text(c.text, color = if (c.checked) WearStyle.Success else Color.White) },
+                    toggleControl = { Text(if (c.checked) "✓" else "○", color = if (c.checked) WearStyle.Success else Color(0xFF9AA0AB)) },
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
             item {
                 Chip(
                     onClick = { captureMemo() },
-                    label = { Text("빠른 메모") },
+                    label = { Text("＋ 빠른 메모") },
                     colors = ChipDefaults.secondaryChipColors(),
                     modifier = Modifier.fillMaxWidth(),
                 )

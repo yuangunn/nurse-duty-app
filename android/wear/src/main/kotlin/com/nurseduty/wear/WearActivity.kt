@@ -36,6 +36,7 @@ import androidx.wear.compose.material.Scaffold
 import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.ToggleChip
 import androidx.wear.input.RemoteInputIntentHelper
+import com.nurseduty.wear.BuildConfig
 import com.google.android.gms.wearable.DataClient
 import com.google.android.gms.wearable.DataMapItem
 import com.google.android.gms.wearable.Wearable
@@ -48,17 +49,31 @@ import java.util.UUID
 class WearActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { WearApp() }
+        // ponytail: DEBUG preview mirrors iOS --watch-preview so the styled state
+        // is verifiable without pairing a phone. Launch: am start ... -e preview evening
+        val preview = if (BuildConfig.DEBUG) intent?.getStringExtra("preview")?.let(::previewState) else null
+        setContent { WearApp(preview) }
     }
 }
 
 private const val MEMO_KEY = "memo"
 
+private fun previewState(kind: String): WearState = WearState(
+    dayKey = 20260702, dutyName = kind.replaceFirstChar { it.uppercase() }, kind = kind.replaceFirstChar { it.uppercase() },
+    colorHex = null, timeText = "14:00 – 22:00", charge = true, nextAlarm = "13:30", pendingMemos = 1,
+    checklist = listOf(
+        WearState.WearItem("charge:handover", "팀 배정·인수인계 확인", false),
+        WearState.WearItem("a", "활력징후 측정", true),
+        WearState.WearItem("b", "저녁 투약 확인", false),
+        WearState.WearItem("c", "인계 준비", false),
+    ),
+)
+
 @Composable
-fun WearApp() {
+fun WearApp(preview: WearState? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var state by remember { mutableStateOf(WearState()) }
+    var state by remember { mutableStateOf(preview ?: WearState()) }
 
     // receive today-state pushed from the phone (latest-wins), plus an initial read
     DisposableEffect(Unit) {

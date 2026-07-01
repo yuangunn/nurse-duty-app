@@ -2,9 +2,13 @@
 
 package com.nurseduty.ui
 
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -84,7 +88,8 @@ fun AppRoot(vm: NurseViewModel) {
                     0 -> HomeScreen(vm, onGear = { showSettings = true }, onMemo = { tab = 3 })
                     1 -> CalendarScreen(vm, onDay = { sheetDay = it })
                     2 -> DutyScreen(vm)
-                    else -> MemoScreen(vm, onCompose = { composerOpen = true })
+                    3 -> MemoScreen(vm, onCompose = { composerOpen = true })
+                    else -> PillCheckScreen()
                 }
             }
             BottomBar(tab) { tab = it }
@@ -103,6 +108,7 @@ private fun BottomBar(tab: Int, onTab: (Int) -> Unit) {
         Triple("근무표", Icons.Filled.CalendarMonth, Icons.Outlined.CalendarMonth),
         Triple("듀티", Icons.Filled.Style, Icons.Outlined.Style),
         Triple("메모", Icons.Filled.EditNote, Icons.Outlined.EditNote),
+        Triple("지참약", Icons.Filled.Medication, Icons.Outlined.Medication),
     )
     Row(
         Modifier.fillMaxWidth().background(c.tabBg).border(0.5.dp, c.tabBorder)
@@ -116,6 +122,75 @@ private fun BottomBar(tab: Int, onTab: (Int) -> Unit) {
             ) {
                 Icon(if (sel) on else off, label, tint = if (sel) c.tabSel else c.tabIdle, modifier = Modifier.size(24.dp))
                 Text(label, style = NurseType.micro.copy(fontWeight = FontWeight.W600), color = if (sel) c.tabSel else c.tabIdle)
+            }
+        }
+    }
+}
+
+// ==================== 지참약 (ward-pillcheck WebView wrap) ====================
+// ponytail: WebView-wraps the existing PWA for UI unity now; native reimplement is the
+// long-term goal. Attribute search works offline; photo-OCR file upload needs a
+// WebChromeClient.onShowFileChooser — add when that path is wanted.
+private const val PILLCHECK_URL = "https://yuangunn.github.io/ward-pillcheck/"
+
+// The PWA sizes html/body/#root with height:100%/100dvh. In an embedded WebView the layout
+// viewport resolves those to 0 (blank page) though window.innerHeight is correct — so pin the
+// shell to innerHeight px and keep it synced on resize. Idempotent; upstream fix would drop this.
+private const val PILLCHECK_HEIGHT_FIX =
+    "(function(){if(window.__ndFix)return;window.__ndFix=1;function f(){var h=window.innerHeight+'px';" +
+        "[document.documentElement,document.body,document.getElementById('root')].forEach(function(e){if(e)e.style.setProperty('height',h,'important')})}" +
+        "f();window.addEventListener('resize',f)})()"
+
+@Composable
+fun PillCheckScreen() {
+    val c = LocalNurse.current
+    var webView by remember { mutableStateOf<WebView?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var canBack by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = canBack) { webView?.goBack() }
+
+    Column(Modifier.fillMaxSize().background(c.bg)) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 54.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("지참약 식별", style = NurseType.h1, color = c.text)
+                Text("환자 지참약 낱알 검색", style = NurseType.caption, color = c.sub)
+            }
+            Box(
+                Modifier.size(38.dp).clip(CircleShape).background(c.cardBg)
+                    .border(1.dp, c.cardBorder, CircleShape).clickable { webView?.reload() },
+                Alignment.Center,
+            ) { Icon(Icons.Filled.Refresh, "새로고침", tint = c.sub, modifier = Modifier.size(18.dp)) }
+        }
+        Box(Modifier.fillMaxSize()) {
+            AndroidView(
+                factory = { ctx ->
+                    WebView(ctx).apply {
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        settings.databaseEnabled = true
+                        webViewClient = object : WebViewClient() {
+                            override fun onPageStarted(v: WebView?, url: String?, favicon: android.graphics.Bitmap?) { loading = true }
+                            // reveal the SPA on first paint — onPageFinished waits for every subresource
+                            override fun onPageCommitVisible(v: WebView?, url: String?) {
+                                loading = false; v?.evaluateJavascript(PILLCHECK_HEIGHT_FIX, null)
+                            }
+                            override fun onPageFinished(v: WebView?, url: String?) {
+                                loading = false; canBack = v?.canGoBack() == true
+                                v?.evaluateJavascript(PILLCHECK_HEIGHT_FIX, null)
+                            }
+                        }
+                        loadUrl(PILLCHECK_URL)
+                        webView = this
+                    }
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+            if (loading) Box(Modifier.fillMaxSize().background(c.bg), Alignment.Center) {
+                CircularProgressIndicator(color = c.tabSel)
             }
         }
     }

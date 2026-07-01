@@ -6,10 +6,9 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nurseduty.ui.AppRoot
+import com.nurseduty.ui.NurseTheme
 import com.nurseduty.ui.NurseViewModel
 
 class MainActivity : ComponentActivity() {
@@ -20,11 +19,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         if (Build.VERSION.SDK_INT >= 33) notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         setContent {
-            MaterialTheme {
-                Surface {
-                    val vm: NurseViewModel = viewModel()
-                    AppRoot(vm)
-                }
+            NurseTheme {
+                val vm: NurseViewModel = viewModel()
+                AppRoot(vm)
             }
         }
     }

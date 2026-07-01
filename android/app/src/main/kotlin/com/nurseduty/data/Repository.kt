@@ -41,8 +41,8 @@ class Repository(
     val memos = dao.memos()
 
     // ---- assignments ----
-    suspend fun assignDuty(dayKey: Int, profileId: String) {
-        dao.upsertAssignment(ShiftAssignmentEntity(dayKey, profileId))
+    suspend fun assignDuty(dayKey: Int, profileId: String, charge: Boolean = false) {
+        dao.upsertAssignment(ShiftAssignmentEntity(dayKey, profileId, charge))
         rescheduleNow()
     }
 
@@ -121,12 +121,21 @@ class Repository(
         runCatching { wearSync.push(wearState()) }   // also mirror to the watch
     }
 
+    /** Today's checklist as (id, text) with the charge item prepended when the assignment is charge. */
+    private suspend fun todayItems(todayKey: Int): Pair<DutyProfileEntity?, List<Pair<String, String>>> {
+        val a = dao.assignment(todayKey)
+        val profile = a?.let { dao.allProfilesOnce().firstOrNull { p -> p.id == it.dutyProfileId } }
+        val base = if (profile != null) {
+            dao.allChecklistOnce().filter { it.dutyProfileId == profile.id && !it.isArchived }
+                .sortedBy { it.sortOrder }.map { it.id to it.text }
+        } else emptyList()
+        val charge = a?.charge == true && profile != null && ChargeRules.chargeable(profile.kind)
+        return profile to ((if (charge) listOf(ChargeRules.ITEM_ID to ChargeRules.ITEM_TEXT) else emptyList()) + base)
+    }
+
     suspend fun wearState(today: LocalDate = LocalDate.now()): WearState {
         val todayKey = DayKey.from(today)
-        val profile = dao.assignment(todayKey)?.let { a -> dao.allProfilesOnce().firstOrNull { it.id == a.dutyProfileId } }
-        val items = if (profile != null) {
-            dao.allChecklistOnce().filter { it.dutyProfileId == profile.id && !it.isArchived }.sortedBy { it.sortOrder }
-        } else emptyList()
+        val (profile, items) = todayItems(todayKey)
         val checked = dao.allChecksOnce().filter { it.dayKey == todayKey }.map { it.checklistItemId }.toSet()
         val (assigns, byId) = domainData()
         val next = AlarmPlanner.plan(assigns, byId, LocalDateTime.now(), windowDays = 2, budget = 5).firstOrNull()
@@ -134,7 +143,7 @@ class Repository(
             dayKey = todayKey, dutyName = profile?.name, colorHex = profile?.colorHex,
             nextAlarm = next?.let { "${it.title} %02d:%02d".format(it.fireAt.hour, it.fireAt.minute) },
             pendingMemos = dao.allMemosOnce().count { !it.isDone },
-            checklist = items.map { WearState.WearItem(it.id, it.text, checked.contains(it.id)) },
+            checklist = items.map { WearState.WearItem(it.first, it.second, checked.contains(it.first)) },
         )
     }
 
@@ -151,14 +160,13 @@ class Repository(
 
     suspend fun todaySnapshot(today: LocalDate = LocalDate.now()): TodayWidget {
         val todayKey = DayKey.from(today)
-        val profile = dao.assignment(todayKey)?.let { a -> dao.allProfilesOnce().firstOrNull { it.id == a.dutyProfileId } }
-        val items = if (profile != null) dao.allChecklistOnce().filter { it.dutyProfileId == profile.id && !it.isArchived } else emptyList()
-        val checkedToday = dao.allChecksOnce().filter { it.dayKey == todayKey }.map { it.checklistItemId }.toSet()
+        val (profile, items) = todayItems(todayKey)
+        val checked = dao.allChecksOnce().filter { it.dayKey == todayKey }.map { it.checklistItemId }.toSet()
         val (assigns, byId) = domainData()
         val next = AlarmPlanner.plan(assigns, byId, LocalDateTime.now(), windowDays = 2, budget = 5).firstOrNull()
         return TodayWidget(
             dutyName = profile?.name, colorHex = profile?.colorHex,
-            done = items.count { checkedToday.contains(it.id) }, total = items.size,
+            done = items.count { checked.contains(it.first) }, total = items.size,
             pendingMemos = dao.allMemosOnce().count { !it.isDone },
             nextAlarm = next?.let { "${it.title} %02d:%02d".format(it.fireAt.hour, it.fireAt.minute) },
         )
@@ -200,22 +208,27 @@ class Repository(
     suspend fun seedPresetsIfEmpty() {
         if (dao.profileCount() > 0) return
         val now = System.currentTimeMillis()
-        data class P(val name: String, val color: String,
+        data class P(val name: String, val kind: String, val color: String, val time: String,
                      val alarms: List<Triple<String, Pair<Int, Int>, Int>>, val checklist: List<String>)
         val presets = listOf(
-            P("Day", "#4F86C6", listOf(Triple("인계", 7 to 0, 0)),
+            P("Day", "Day", "#3182F6", "06:00 – 14:00",
+                listOf(Triple("인계 준비", 5 to 30, 0), Triple("인계 · 라운드", 6 to 0, 0)),
                 listOf("활력징후 측정", "오전 투약 확인", "인계 준비")),
-            P("Evening", "#E8A33D", listOf(Triple("출근 준비", 14 to 0, 0), Triple("인계", 15 to 0, 0)),
+            P("Mid", "Mid", "#14B8A6", "11:00 – 19:00",
+                listOf(Triple("인계 준비", 10 to 30, 0), Triple("인계 · 라운드", 11 to 0, 0)),
+                listOf("활력징후 측정", "점심 투약 확인", "처치·검사 라운드", "인계 준비")),
+            P("Evening", "Evening", "#F59E0B", "14:00 – 22:00",
+                listOf(Triple("인계 준비", 13 to 30, 0), Triple("Day 인계", 14 to 0, 0)),
                 listOf("활력징후 측정", "저녁 투약 확인", "인계 준비")),
-            P("Night", "#3B4A6B", listOf(Triple("출근 준비", 21 to 0, 0), Triple("인계", 22 to 0, 0), Triple("아침 인계", 6 to 0, 1)),
+            P("Night", "Night", "#5B5BD6", "22:00 – 06:00 익일",
+                listOf(Triple("인계 준비", 21 to 30, 0), Triple("인계", 22 to 0, 0), Triple("아침 인계", 6 to 0, 1)),
                 listOf("활력징후 측정", "야간 투약 확인", "낙상 위험 점검", "아침 인계 준비")),
-            P("Off", "#9AA0A6", emptyList(), emptyList()),
-            P("Charge", "#C0504D", listOf(Triple("인계", 7 to 0, 0), Triple("팀 브리핑", 8 to 0, 0)),
-                listOf("인력 배치 확인", "중환자 파악", "입퇴원 조율", "팀 인계")),
+            P("Off", "Off", "#94A3B8", "휴무", emptyList(), emptyList()),
         )
         presets.forEachIndexed { i, preset ->
             val pid = UUID.randomUUID().toString()
-            dao.upsertProfile(DutyProfileEntity(pid, preset.name, preset.color, isPreset = true, sortOrder = i, createdAt = now))
+            dao.upsertProfile(DutyProfileEntity(pid, preset.name, preset.color, preset.kind, preset.time,
+                isPreset = true, sortOrder = i, createdAt = now))
             preset.alarms.forEachIndexed { j, (label, hm, off) ->
                 dao.upsertAlarm(AlarmEntity(UUID.randomUUID().toString(), pid, label, hm.first, hm.second, off, true, j))
             }

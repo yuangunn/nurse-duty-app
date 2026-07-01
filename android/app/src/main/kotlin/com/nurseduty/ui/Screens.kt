@@ -6,6 +6,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -15,102 +16,242 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.nurseduty.data.AlarmEntity
+import com.nurseduty.data.ChargeRules
 import com.nurseduty.data.ChecklistItemEntity
 import com.nurseduty.data.DutyProfileEntity
 import com.nurseduty.data.QuickMemoEntity
 import com.nurseduty.domain.DayKey
 import java.time.LocalDate
 import java.time.YearMonth
-import java.time.format.TextStyle
-import java.util.Locale
 
 fun colorFromHex(hex: String): Color =
     runCatching { Color(("FF" + hex.removePrefix("#")).toLong(16)) }.getOrElse { Color.Gray }
 
-val swatches = listOf("#4F86C6", "#E8A33D", "#3B4A6B", "#9AA0A6", "#C0504D", "#5B9279", "#8E6BAD", "#D16BA5")
+private fun dutyDisplay(p: DutyProfileEntity, charge: Boolean = false): String =
+    if (p.kind == "Custom") p.name
+    else "${p.name} · ${Duty.ko(p.kind)}${if (charge && ChargeRules.chargeable(p.kind)) "차지" else ""}"
+
+// ---- reusable ----
+@Composable
+private fun SoftCard(modifier: Modifier = Modifier, pad: Dp = 16.dp, content: @Composable ColumnScope.() -> Unit) {
+    val c = LocalNurse.current
+    Column(
+        modifier.clip(RoundedCornerShape(20.dp)).background(c.cardBg)
+            .border(1.dp, c.cardBorder, RoundedCornerShape(20.dp)).padding(pad),
+        content = content,
+    )
+}
+
+@Composable
+private fun Avatar(kind: String, size: Dp = 46.dp, radius: Dp = 14.dp) {
+    Box(Modifier.size(size).clip(RoundedCornerShape(radius)).background(Duty.gradient(kind)), Alignment.Center) {
+        Text(Duty.letter(kind), style = NurseType.rowTitle.copy(fontWeight = FontWeight.W800), color = Color.White)
+    }
+}
 
 @Composable
 fun AppRoot(vm: NurseViewModel) {
+    val c = LocalNurse.current
     var tab by rememberSaveable { mutableStateOf(0) }
-    Scaffold(bottomBar = {
-        NavigationBar {
-            val tabs = listOf("오늘" to Icons.Default.Checklist, "근무표" to Icons.Default.CalendarMonth,
-                "듀티" to Icons.Default.Group, "메모" to Icons.Default.EditNote, "설정" to Icons.Default.Settings)
-            tabs.forEachIndexed { i, (label, icon) ->
-                NavigationBarItem(selected = tab == i, onClick = { tab = i },
-                    icon = { Icon(icon, label) }, label = { Text(label) })
+    var showSettings by rememberSaveable { mutableStateOf(false) }
+    var sheetDay by rememberSaveable { mutableStateOf<Int?>(null) }
+    var composerOpen by rememberSaveable { mutableStateOf(false) }
+
+    Box(Modifier.fillMaxSize().background(c.bg)) {
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f)) {
+                when (tab) {
+                    0 -> HomeScreen(vm, onGear = { showSettings = true }, onMemo = { tab = 3 })
+                    1 -> CalendarScreen(vm, onDay = { sheetDay = it })
+                    2 -> DutyScreen(vm)
+                    else -> MemoScreen(vm, onCompose = { composerOpen = true })
+                }
             }
+            BottomBar(tab) { tab = it }
         }
-    }) { pad ->
-        Box(Modifier.padding(pad)) {
-            when (tab) {
-                0 -> TodayScreen(vm)
-                1 -> CalendarScreen(vm)
-                2 -> DutyTab(vm)
-                3 -> MemoScreen(vm)
-                else -> SettingsScreen(vm)
+        if (sheetDay != null) AssignSheet(vm, sheetDay!!, onClose = { sheetDay = null }, onDay = { sheetDay = it })
+        if (composerOpen) ComposerSheet(vm, onClose = { composerOpen = false })
+        if (showSettings) SettingsScreen(vm, onBack = { showSettings = false })
+    }
+}
+
+@Composable
+private fun BottomBar(tab: Int, onTab: (Int) -> Unit) {
+    val c = LocalNurse.current
+    val items = listOf(
+        Triple("홈", Icons.Filled.Home, Icons.Outlined.Home),
+        Triple("근무표", Icons.Filled.CalendarMonth, Icons.Outlined.CalendarMonth),
+        Triple("듀티", Icons.Filled.Style, Icons.Outlined.Style),
+        Triple("메모", Icons.Filled.EditNote, Icons.Outlined.EditNote),
+    )
+    Row(
+        Modifier.fillMaxWidth().background(c.tabBg).border(0.5.dp, c.tabBorder)
+            .padding(top = 9.dp, bottom = 20.dp),
+    ) {
+        items.forEachIndexed { i, (label, on, off) ->
+            val sel = tab == i
+            Column(
+                Modifier.weight(1f).clickable { onTab(i) }.padding(vertical = 2.dp),
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Icon(if (sel) on else off, label, tint = if (sel) c.tabSel else c.tabIdle, modifier = Modifier.size(24.dp))
+                Text(label, style = NurseType.micro.copy(fontWeight = FontWeight.W600), color = if (sel) c.tabSel else c.tabIdle)
             }
         }
     }
 }
 
+// ==================== HOME ====================
 @Composable
-fun TodayScreen(vm: NurseViewModel) {
+fun HomeScreen(vm: NurseViewModel, onGear: () -> Unit, onMemo: () -> Unit) {
+    val c = LocalNurse.current
     val profiles by vm.profiles.collectAsStateWithLifecycle()
     val assignments by vm.assignments.collectAsStateWithLifecycle()
     val items by vm.checklistItems.collectAsStateWithLifecycle()
     val checks by vm.checks.collectAsStateWithLifecycle()
-    val todayKey = DayKey.from(LocalDate.now())
-    val profile = assignments.firstOrNull { it.dayKey == todayKey }
-        ?.let { a -> profiles.firstOrNull { it.id == a.dutyProfileId } }
-    val checkedToday = checks.filter { it.dayKey == todayKey }.map { it.checklistItemId }.toSet()
+    val alarms by vm.alarms.collectAsStateWithLifecycle()
+    val memos by vm.memos.collectAsStateWithLifecycle()
+    val weather by vm.weather.collectAsStateWithLifecycle()
 
-    Scaffold(topBar = { TopAppBar(title = { Text(LocalDate.now().toString()) }) }) { pad ->
-        if (profile == null) {
-            Box(Modifier.fillMaxSize().padding(pad), Alignment.Center) {
-                Text("오늘 근무가 없습니다. 근무표에서 배정하세요.", color = Color.Gray)
-            }
-        } else {
-            val list = items.filter { it.dutyProfileId == profile.id && !it.isArchived }.sortedBy { it.sortOrder }
-            val done = list.count { checkedToday.contains(it.id) }
-            Column(Modifier.padding(pad).padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(14.dp).clip(CircleShape).background(colorFromHex(profile.colorHex)))
-                    Spacer(Modifier.width(8.dp))
-                    Text(profile.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.weight(1f))
-                    if (list.isNotEmpty()) Text("$done/${list.size}", color = Color.Gray)
+    val todayKey = DayKey.from(LocalDate.now())
+    val a = assignments.firstOrNull { it.dayKey == todayKey }
+    val profile = a?.let { asn -> profiles.firstOrNull { it.id == asn.dutyProfileId } }
+    val kind = profile?.kind ?: "None"
+    val charge = a?.charge == true && profile != null && ChargeRules.chargeable(kind)
+    val sky = Duty.sky(kind)
+    val hasWork = profile != null && kind != "Off"
+
+    // today's checklist (charge item prepended)
+    val base = profile?.let { p -> items.filter { it.dutyProfileId == p.id && !it.isArchived }.sortedBy { it.sortOrder } } ?: emptyList()
+    val todayItems = (if (charge) listOf(ChargeRules.ITEM_ID to ChargeRules.ITEM_TEXT) else emptyList()) + base.map { it.id to it.text }
+    val checkedToday = checks.filter { it.dayKey == todayKey }.map { it.checklistItemId }.toSet()
+    val done = todayItems.count { checkedToday.contains(it.first) }
+    val total = todayItems.size
+
+    // next alarm today
+    val nextAlarm = profile?.let { p ->
+        alarms.filter { it.dutyProfileId == p.id && it.enabled }.minByOrNull { it.hour * 60 + it.minute }
+    }
+    val pending = memos.filter { !it.isDone }
+
+    LazyColumn(Modifier.fillMaxSize()) {
+        item {
+            // HERO
+            Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(bottomStart = 30.dp, bottomEnd = 30.dp)).background(sky.grad)) {
+                HeroDeco(sky.deco)
+                Column(Modifier.padding(start = 22.dp, end = 22.dp, top = 54.dp, bottom = 24.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(todayDate(), style = NurseType.caption, color = Color.White.copy(0.9f))
+                        Spacer(Modifier.weight(1f))
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.clip(CircleShape).background(Color.White.copy(0.2f)).padding(horizontal = 10.dp, vertical = 5.dp)) {
+                            if (weather.isLive) Box(Modifier.size(6.dp).clip(CircleShape).background(Color(0xFF7CFFB2)))
+                            Icon(Icons.Filled.LocationOn, null, tint = Color.White.copy(0.9f), modifier = Modifier.size(12.dp))
+                            Text(weather.loc, style = NurseType.label.copy(fontWeight = FontWeight.W600), color = Color.White)
+                            Icon(weatherIcon(weather.icon, kind != "Night"), null, tint = Color.White, modifier = Modifier.size(15.dp))
+                            Text(weather.temp, style = NurseType.caption.copy(fontWeight = FontWeight.W800), color = Color.White)
+                        }
+                        Spacer(Modifier.width(7.dp))
+                        Box(Modifier.size(34.dp).clip(CircleShape).background(Color.White.copy(0.18f)).clickable { onGear() }, Alignment.Center) {
+                            Icon(Icons.Filled.Settings, "설정", tint = Color.White, modifier = Modifier.size(17.dp))
+                        }
+                    }
+                    Text("지현님, ${sky.greeting}", style = NurseType.greeting, color = Color.White, modifier = Modifier.padding(top = 8.dp))
+                    if (charge) {
+                        Row(Modifier.padding(top = 9.dp).clip(CircleShape).background(Color.White.copy(0.2f))
+                            .border(1.dp, Color.White.copy(0.36f), CircleShape).padding(horizontal = 11.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Icon(Icons.Filled.WorkspacePremium, null, tint = Color(0xFFFFE49B), modifier = Modifier.size(13.dp))
+                            Text("차지 간호사 · 팀 리더", style = NurseType.label, color = Color.White)
+                        }
+                    }
+                    Row(Modifier.padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                        if (hasWork) ProgressRing(done, total, sky.ringHole)
+                        else Box(Modifier.size(108.dp).clip(CircleShape).background(Color.White.copy(0.18f)), Alignment.Center) {
+                            Text(sky.restIcon, style = NurseType.h1)
+                        }
+                        Column {
+                            Text("오늘의 근무", style = NurseType.caption, color = Color.White.copy(0.82f))
+                            Text(if (profile != null) dutyDisplay(profile, charge) else "근무 미배정",
+                                style = NurseType.heroShift, color = Color.White, modifier = Modifier.padding(vertical = 2.dp))
+                            Text(if (profile != null) (if (kind == "Off") "휴무" else profile.timeText) else "미배정",
+                                style = NurseType.label, color = Color.White,
+                                modifier = Modifier.clip(CircleShape).background(Color.White.copy(0.2f)).padding(horizontal = 10.dp, vertical = 4.dp))
+                        }
+                    }
+                    if (hasWork && nextAlarm != null) {
+                        Row(Modifier.padding(top = 16.dp).fillMaxWidth().clip(RoundedCornerShape(15.dp)).background(Color.White.copy(0.18f)).padding(horizontal = 15.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+                            Icon(Icons.Filled.NotificationsActive, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Text("다음 알람 · ${nextAlarm.label}", style = NurseType.bodyStrong, color = Color.White)
+                            Spacer(Modifier.weight(1f))
+                            Text("%02d:%02d".format(nextAlarm.hour, nextAlarm.minute), style = NurseType.bodyStrong.copy(fontWeight = FontWeight.W800), color = Color.White)
+                        }
+                    }
                 }
-                Spacer(Modifier.height(12.dp))
-                LazyColumn {
-                    items(list, key = { it.id }) { item ->
-                        val on = checkedToday.contains(item.id)
-                        ListItem(
-                            headlineContent = {
-                                Text(item.text, textDecoration = if (on) TextDecoration.LineThrough else null,
-                                    color = if (on) Color.Gray else Color.Unspecified)
-                            },
-                            leadingContent = {
-                                Icon(if (on) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked, null,
-                                    tint = if (on) MaterialTheme.colorScheme.primary else Color.Gray)
-                            },
-                            modifier = Modifier.clickable { vm.toggleCheck(item.id, todayKey) },
-                        )
-                        HorizontalDivider()
+            }
+        }
+        item {
+            if (hasWork) {
+                SoftCard(Modifier.padding(16.dp, 16.dp, 16.dp, 0.dp)) {
+                    Row(Modifier.fillMaxWidth().padding(bottom = 13.dp), verticalAlignment = Alignment.Bottom) {
+                        Text("오늘 체크리스트", style = NurseType.cardTitle, color = c.text)
+                        Spacer(Modifier.weight(1f))
+                        Text(progressNote(done, total), style = NurseType.label, color = c.faint)
+                    }
+                    todayItems.forEach { (id, text) ->
+                        val on = checkedToday.contains(id)
+                        val isCharge = id == ChargeRules.ITEM_ID
+                        Row(Modifier.fillMaxWidth().clickable { vm.toggleCheck(id, todayKey) }.padding(vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+                            Icon(if (on) Icons.Filled.CheckCircle else Icons.Outlined.Circle, null,
+                                tint = if (on) Duty.Success else if (c.dark) Color(0xFF3A3324) else Color(0xFFDCD2C0), modifier = Modifier.size(23.dp))
+                            Text(text, style = NurseType.body, color = if (on) c.sub else c.text,
+                                textDecoration = if (on) TextDecoration.LineThrough else null, modifier = Modifier.weight(1f))
+                            if (isCharge) Text("차지", style = NurseType.micro.copy(fontWeight = FontWeight.W800), color = Duty.GoldInk,
+                                modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Color(0x29EAB308)).padding(horizontal = 7.dp, vertical = 2.dp))
+                        }
+                    }
+                }
+            } else {
+                SoftCard(Modifier.padding(16.dp, 16.dp, 16.dp, 0.dp), pad = 22.dp) {
+                    Text(sky.restTitle, style = NurseType.cardTitle, color = c.text, modifier = Modifier.align(Alignment.CenterHorizontally))
+                    Text(sky.restSub, style = NurseType.caption, color = c.sub, modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 4.dp))
+                }
+            }
+        }
+        item {
+            SoftCard(Modifier.padding(16.dp, 14.dp, 16.dp, 24.dp).clickable { onMemo() }, pad = 16.dp) {
+                Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("대기 메모 ", style = NurseType.caption.copy(fontWeight = FontWeight.W700), color = c.text)
+                    Text("${pending.size}", style = NurseType.caption.copy(fontWeight = FontWeight.W700), color = Color(0xFF3182F6))
+                    Spacer(Modifier.weight(1f))
+                    Icon(Icons.Filled.ChevronRight, null, tint = c.faint, modifier = Modifier.size(16.dp))
+                }
+                pending.take(2).forEach { m ->
+                    Row(Modifier.padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        BedChip(m.bedTag, Color(0xFF3182F6))
+                        Text(m.text, style = NurseType.caption, color = c.sub, maxLines = 1)
                     }
                 }
             }
@@ -119,50 +260,97 @@ fun TodayScreen(vm: NurseViewModel) {
 }
 
 @Composable
-fun CalendarScreen(vm: NurseViewModel) {
+private fun HeroDeco(deco: String) {
+    when (deco) {
+        "sun", "sunset" -> Box(Modifier.size(126.dp).offset(x = 300.dp, y = (-26).dp).clip(CircleShape)
+            .background(Brush.radialGradient(listOf(Color(0xFFFFF6D6), Color(0x8CFFD56E), Color(0x00FFB347)))))
+        "night" -> Box(Modifier.size(34.dp).offset(x = 330.dp, y = 14.dp).clip(CircleShape).background(Color(0xFFFBF3DC)))
+        "noon" -> Box(Modifier.fillMaxWidth().height(118.dp).offset(y = (-42).dp))
+        else -> {}
+    }
+}
+
+@Composable
+private fun ProgressRing(done: Int, total: Int, hole: Color) {
+    val pct = if (total > 0) done.toFloat() / total else 0f
+    Box(Modifier.size(108.dp), Alignment.Center) {
+        androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+            val sw = 12.dp.toPx()
+            val inset = sw / 2
+            val arcSize = androidx.compose.ui.geometry.Size(size.width - sw, size.height - sw)
+            val tl = Offset(inset, inset)
+            drawArc(Color.White.copy(0.30f), -90f, 360f, false, topLeft = tl, size = arcSize, style = Stroke(sw))
+            drawArc(Color.White, -90f, pct * 360f, false, topLeft = tl, size = arcSize, style = Stroke(sw, cap = StrokeCap.Round))
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text("$done", style = NurseType.ringBig, color = Color.White)
+                Text("/$total", style = NurseType.rowTitle, color = Color.White.copy(0.6f))
+            }
+            Text("완료", style = NurseType.micro.copy(fontWeight = FontWeight.W600), color = Color.White.copy(0.85f))
+        }
+    }
+}
+
+// ==================== CALENDAR ====================
+@Composable
+fun CalendarScreen(vm: NurseViewModel, onDay: (Int) -> Unit) {
+    val c = LocalNurse.current
     val profiles by vm.profiles.collectAsStateWithLifecycle()
     val assignments by vm.assignments.collectAsStateWithLifecycle()
     var monthKey by rememberSaveable { mutableStateOf(YearMonth.now().run { year * 100 + monthValue }) }
     val month = YearMonth.of(monthKey / 100, monthKey % 100)
-    var pickKey by rememberSaveable { mutableStateOf<Int?>(null) }
     val byDay = assignments.associateBy { it.dayKey }
-    val profileById = profiles.associateBy { it.id }
+    val byId = profiles.associateBy { it.id }
+    val todayKey = DayKey.from(LocalDate.now())
 
-    Scaffold(topBar = { TopAppBar(title = { Text("근무표") }) }) { pad ->
-        Column(Modifier.padding(pad).padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { monthKey = month.minusMonths(1).run { year * 100 + monthValue } }) { Icon(Icons.Default.ChevronLeft, "이전") }
+    LazyColumn(Modifier.fillMaxSize()) {
+        item {
+            Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 54.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("근무표", style = NurseType.h1, color = c.text)
                 Spacer(Modifier.weight(1f))
-                Text("${month.year}년 ${month.monthValue}월", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.weight(1f))
-                IconButton(onClick = { monthKey = month.plusMonths(1).run { year * 100 + monthValue } }) { Icon(Icons.Default.ChevronRight, "다음") }
+                Icon(Icons.Filled.ChevronLeft, "이전", tint = c.sub, modifier = Modifier.size(22.dp).clickable { monthKey = month.minusMonths(1).run { year * 100 + monthValue } })
+                Text("${month.year}. ${month.monthValue}", style = NurseType.rowTitle, color = c.text, modifier = Modifier.padding(horizontal = 12.dp))
+                Icon(Icons.Filled.ChevronRight, "다음", tint = c.sub, modifier = Modifier.size(22.dp).clickable { monthKey = month.plusMonths(1).run { year * 100 + monthValue } })
             }
-            Row {
-                listOf("일", "월", "화", "수", "목", "금", "토").forEach {
-                    Text(it, Modifier.weight(1f), color = Color.Gray, style = MaterialTheme.typography.labelSmall)
+        }
+        item {
+            SoftCard(Modifier.padding(16.dp, 16.dp, 16.dp, 0.dp), pad = 12.dp) {
+                Row(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                    listOf("일", "월", "화", "수", "목", "금", "토").forEach {
+                        Text(it, style = NurseType.micro, color = c.faint, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    }
                 }
-            }
-            val first = month.atDay(1)
-            val lead = first.dayOfWeek.value % 7
-            val cells = List(lead) { null } + (1..month.lengthOfMonth()).map { month.atDay(it) }
-            Column {
+                val first = month.atDay(1)
+                val lead = first.dayOfWeek.value % 7
+                val cells = List(lead) { null } + (1..month.lengthOfMonth()).map { month.atDay(it) }
                 cells.chunked(7).forEach { week ->
-                    Row {
+                    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         for (i in 0 until 7) {
                             val day = week.getOrNull(i)
-                            Box(Modifier.weight(1f).height(54.dp).padding(2.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (day != null) Color(0x11000000) else Color.Transparent)
-                                .clickable(enabled = day != null) { day?.let { pickKey = DayKey.from(it) } }) {
+                            Box(Modifier.weight(1f).height(48.dp)) {
                                 if (day != null) {
-                                    val a = byDay[DayKey.from(day)]
-                                    val p = a?.let { profileById[it.dutyProfileId] }
-                                    Column(Modifier.fillMaxSize().padding(2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("${day.dayOfMonth}", style = MaterialTheme.typography.bodySmall)
-                                        if (p != null) {
-                                            Text(p.name.take(4), style = MaterialTheme.typography.labelSmall,
-                                                color = colorFromHex(p.colorHex), maxLines = 1)
+                                    val dk = DayKey.from(day)
+                                    val asn = byDay[dk]
+                                    val p = asn?.let { byId[it.dutyProfileId] }
+                                    val col = p?.let { colorFromHex(it.colorHex) }
+                                    val isToday = dk == todayKey
+                                    val cellBg = when {
+                                        p != null && isToday -> col!!
+                                        p != null -> col!!.copy(alpha = if (c.dark) 0.24f else 0.14f)
+                                        else -> if (c.dark) Color(0xFF1B160E) else Color(0xFFF3EEE4)
+                                    }
+                                    Box(Modifier.fillMaxSize().clip(RoundedCornerShape(11.dp)).background(cellBg)
+                                        .then(if (isToday && p != null) Modifier.border(1.5.dp, Color.White, RoundedCornerShape(11.dp)) else Modifier)
+                                        .clickable { onDay(dk) }) {
+                                        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                            Text("${day.dayOfMonth}", style = NurseType.label,
+                                                color = if (p != null) (if (isToday) Color.White else c.text) else c.faint)
+                                            if (p != null) Text(Duty.short(p.kind), style = NurseType.micro.copy(fontWeight = FontWeight.W800),
+                                                color = if (isToday) Color.White.copy(0.92f) else col!!)
                                         }
+                                        if (asn?.charge == true && p != null && ChargeRules.chargeable(p.kind))
+                                            Box(Modifier.align(Alignment.TopEnd).padding(4.dp).size(6.dp).clip(CircleShape).background(Duty.Gold))
                                     }
                                 }
                             }
@@ -171,358 +359,334 @@ fun CalendarScreen(vm: NurseViewModel) {
                 }
             }
         }
-    }
-
-    val pk = pickKey
-    if (pk != null) {
-        val day = DayKey.toLocalDate(pk)
-        val current = byDay[pk]
-        AlertDialog(
-            onDismissRequest = { pickKey = null },
-            title = { Text("${day.monthValue}월 ${day.dayOfMonth}일") },
-            text = {
-                Column {
-                    profiles.filter { !it.isArchived }.forEach { p ->
-                        Row(Modifier.fillMaxWidth().clickable {
-                            vm.assign(pk, p.id)
-                            pickKey = DayKey.from(DayKey.toLocalDate(pk).plusDays(1))  // 연속 입력: 다음 날로
-                        }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(12.dp).clip(CircleShape).background(colorFromHex(p.colorHex)))
-                            Spacer(Modifier.width(8.dp))
-                            Text(p.name)
-                            if (current?.dutyProfileId == p.id) {
-                                Spacer(Modifier.weight(1f)); Icon(Icons.Default.Check, null)
+        item {
+            // stats
+            val counts = Duty.KINDS.associateWith { k -> assignments.count { byId[it.dutyProfileId]?.kind == k } }
+            val total = counts.values.sum()
+            val chargeDays = assignments.count { asn -> asn.charge && byId[asn.dutyProfileId]?.let { ChargeRules.chargeable(it.kind) } == true }
+            SoftCard(Modifier.padding(16.dp, 14.dp, 16.dp, 24.dp), pad = 18.dp) {
+                Row(Modifier.fillMaxWidth().padding(bottom = 14.dp), verticalAlignment = Alignment.Bottom) {
+                    Text("이번 달 근무", style = NurseType.cardTitle, color = c.text)
+                    Spacer(Modifier.weight(1f))
+                    Text("$total", style = NurseType.statBig, color = c.text)
+                    Text("일", style = NurseType.caption.copy(fontWeight = FontWeight.W700), color = c.sub)
+                }
+                Row(Modifier.fillMaxWidth().height(14.dp).clip(CircleShape).background(c.track), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Duty.KINDS.forEach { k -> val n = counts[k] ?: 0; if (n > 0) Box(Modifier.weight(n.toFloat()).fillMaxHeight().background(Duty.color(k))) }
+                }
+                Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+                    Duty.KINDS.filter { (counts[it] ?: 0) > 0 }.chunked(2).forEach { row ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                            row.forEach { k ->
+                                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Box(Modifier.size(10.dp).clip(RoundedCornerShape(3.dp)).background(Duty.color(k)))
+                                    Text(Duty.ko(k), style = NurseType.caption, color = c.text, modifier = Modifier.weight(1f))
+                                    Text("${counts[k]}", style = NurseType.caption.copy(fontWeight = FontWeight.W800), color = c.text)
+                                }
                             }
+                            if (row.size == 1) Spacer(Modifier.weight(1f))
                         }
                     }
+                    Row(Modifier.fillMaxWidth().padding(top = 3.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Filled.WorkspacePremium, null, tint = Duty.Gold, modifier = Modifier.size(15.dp))
+                        Text("그 중 차지 근무", style = NurseType.caption, color = c.text, modifier = Modifier.weight(1f))
+                        Text("${chargeDays}일", style = NurseType.caption.copy(fontWeight = FontWeight.W800), color = c.text)
+                    }
                 }
-            },
-            confirmButton = { TextButton(onClick = { pickKey = null }) { Text("닫기") } },
-            dismissButton = {
-                if (current != null) TextButton(onClick = { vm.clearAssign(pk); pickKey = null }) { Text("지우기") }
-            },
-        )
+            }
+        }
     }
 }
 
+// ==================== DUTY ====================
 @Composable
-fun DutyTab(vm: NurseViewModel) {
-    var selected by rememberSaveable { mutableStateOf<String?>(null) }
-    if (selected == null) DutyListScreen(vm) { selected = it }
-    else DutyDetailScreen(vm, selected!!) { selected = null }
-}
-
-@Composable
-fun DutyListScreen(vm: NurseViewModel, onOpen: (String) -> Unit) {
+fun DutyScreen(vm: NurseViewModel) {
+    val c = LocalNurse.current
     val profiles by vm.profiles.collectAsStateWithLifecycle()
     val alarms by vm.alarms.collectAsStateWithLifecycle()
     val items by vm.checklistItems.collectAsStateWithLifecycle()
-    var editing by remember { mutableStateOf(false) }
 
-    Scaffold(
-        topBar = { TopAppBar(title = { Text("듀티") }) },
-        floatingActionButton = { FloatingActionButton(onClick = { editing = true }) { Icon(Icons.Default.Add, "추가") } },
-    ) { pad ->
-        LazyColumn(Modifier.padding(pad)) {
-            items(profiles.filter { !it.isArchived }, key = { it.id }) { p ->
-                ListItem(
-                    headlineContent = { Text(p.name) },
-                    leadingContent = { Box(Modifier.size(16.dp).clip(CircleShape).background(colorFromHex(p.colorHex))) },
-                    supportingContent = {
-                        Text("알람 ${alarms.count { it.dutyProfileId == p.id }} · 체크 ${items.count { it.dutyProfileId == p.id && !it.isArchived }}")
-                    },
-                    trailingContent = {
-                        IconButton(onClick = { vm.archiveProfile(p) }) { Icon(Icons.Default.Archive, "보관") }
-                    },
-                    modifier = Modifier.clickable { onOpen(p.id) },
-                )
-                HorizontalDivider()
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        item {
+            Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 16.dp, top = 54.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("듀티", style = NurseType.h1, color = c.text)
+                Spacer(Modifier.weight(1f))
             }
         }
-    }
-    if (editing) ProfileDialog(null, onDismiss = { editing = false }) { name, color ->
-        vm.saveProfile(null, name, color); editing = false
-    }
-}
-
-@Composable
-fun DutyDetailScreen(vm: NurseViewModel, profileId: String, onBack: () -> Unit) {
-    val profiles by vm.profiles.collectAsStateWithLifecycle()
-    val alarms by vm.alarms.collectAsStateWithLifecycle()
-    val items by vm.checklistItems.collectAsStateWithLifecycle()
-    val profile = profiles.firstOrNull { it.id == profileId } ?: return
-    val myAlarms = alarms.filter { it.dutyProfileId == profileId }.sortedBy { it.sortOrder }
-    val myItems = items.filter { it.dutyProfileId == profileId && !it.isArchived }.sortedBy { it.sortOrder }
-
-    var alarmEdit by remember { mutableStateOf<AlarmEntity?>(null) }
-    var addingAlarm by remember { mutableStateOf(false) }
-    var addingChecklist by remember { mutableStateOf(false) }
-    var profileEdit by remember { mutableStateOf(false) }
-
-    Scaffold(topBar = {
-        TopAppBar(
-            title = { Text(profile.name) },
-            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "뒤로") } },
-            actions = { TextButton(onClick = { profileEdit = true }) { Text("편집") } },
-        )
-    }) { pad ->
-        LazyColumn(Modifier.padding(pad)) {
-            item { SectionHeader("알람") }
-            items(myAlarms, key = { it.id }) { a ->
-                ListItem(
-                    headlineContent = { Text(a.label.ifBlank { "(이름 없음)" }) },
-                    supportingContent = { if (a.dayOffset > 0) Text("익일", color = Color(0xFFE8A33D)) },
-                    trailingContent = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("%02d:%02d".format(a.hour, a.minute))
-                            IconButton(onClick = { vm.deleteAlarm(a) }) { Icon(Icons.Default.Delete, "삭제") }
-                        }
-                    },
-                    modifier = Modifier.clickable { alarmEdit = a },
-                )
-                HorizontalDivider()
-            }
-            item {
-                TextButton(onClick = { addingAlarm = true }, modifier = Modifier.padding(8.dp)) {
-                    Icon(Icons.Default.Add, null); Text(" 알람 추가")
+        items(profiles.filter { !it.isArchived }, key = { it.id }) { p ->
+            Row(Modifier.padding(16.dp, 11.dp, 16.dp, 0.dp).fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(c.cardBg)
+                .border(1.dp, c.cardBorder, RoundedCornerShape(18.dp)).padding(15.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(13.dp)) {
+                Avatar(p.kind)
+                Column(Modifier.weight(1f)) {
+                    Text(dutyDisplay(p), style = NurseType.rowTitle, color = c.text)
+                    Text(p.timeText.ifBlank { "—" }, style = NurseType.caption, color = c.sub)
                 }
+                Chip("알람 ${alarms.count { it.dutyProfileId == p.id }}")
+                Chip("체크 ${items.count { it.dutyProfileId == p.id && !it.isArchived }}")
             }
-            item { SectionHeader("체크리스트") }
-            items(myItems, key = { it.id }) { c ->
-                ListItem(
-                    headlineContent = { Text(c.text) },
-                    trailingContent = { IconButton(onClick = { vm.archiveChecklistItem(c) }) { Icon(Icons.Default.Delete, "삭제") } },
-                )
-                HorizontalDivider()
-            }
-            item {
-                TextButton(onClick = { addingChecklist = true }, modifier = Modifier.padding(8.dp)) {
-                    Icon(Icons.Default.Add, null); Text(" 체크리스트 추가")
+        }
+        item {
+            Row(Modifier.padding(16.dp, 14.dp, 16.dp, 0.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                .background(c.chargeInfoBg).border(1.dp, c.chargeInfoBorder, RoundedCornerShape(16.dp)).padding(15.dp),
+                horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+                Box(Modifier.size(32.dp).clip(RoundedCornerShape(10.dp)).background(Color(0x29EAB308)), Alignment.Center) {
+                    Icon(Icons.Filled.WorkspacePremium, null, tint = Color(0xFFCA9A08), modifier = Modifier.size(17.dp))
                 }
+                Text("차지(Charge)는 별도 번이 아니라 데이·이브닝·나이트의 팀 리더 역할이에요. 근무 배정할 때 '차지'를 켜면 표시됩니다.",
+                    style = NurseType.caption, color = c.sub)
             }
-        }
-    }
-
-    alarmEdit?.let { a ->
-        AlarmDialog(a, onDismiss = { alarmEdit = null }) { saved -> vm.saveAlarm(saved); alarmEdit = null }
-    }
-    if (addingAlarm) {
-        AlarmDialog(vm.newAlarm(profileId, myAlarms.size), onDismiss = { addingAlarm = false }) { saved ->
-            vm.saveAlarm(saved); addingAlarm = false
-        }
-    }
-    if (addingChecklist) {
-        TextDialog("체크리스트 추가", "", onDismiss = { addingChecklist = false }) { text ->
-            vm.saveChecklistItem(vm.newChecklistItem(profileId, text, myItems.size)); addingChecklist = false
-        }
-    }
-    if (profileEdit) {
-        ProfileDialog(profile, onDismiss = { profileEdit = false }) { name, color ->
-            vm.saveProfile(profile.id, name, color); profileEdit = false
         }
     }
 }
 
 @Composable
-fun MemoScreen(vm: NurseViewModel) {
+private fun Chip(text: String) {
+    val c = LocalNurse.current
+    Text(text, style = NurseType.micro, color = c.chipText,
+        modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(c.chipBg).padding(horizontal = 9.dp, vertical = 4.dp))
+}
+
+@Composable
+private fun BedChip(bed: String, color: Color) =
+    Text(bed.ifBlank { "병상" }, style = NurseType.label.copy(fontWeight = FontWeight.W800), color = Color.White,
+        modifier = Modifier.clip(RoundedCornerShape(7.dp)).background(color).padding(horizontal = 7.dp, vertical = 3.dp))
+
+// ==================== MEMO ====================
+@Composable
+fun MemoScreen(vm: NurseViewModel, onCompose: () -> Unit) {
+    val c = LocalNurse.current
     val memos by vm.memos.collectAsStateWithLifecycle()
-    var adding by remember { mutableStateOf(false) }
     val pending = memos.filter { !it.isDone }
     val done = memos.filter { it.isDone }
 
-    Scaffold(
-        topBar = { TopAppBar(title = { Text("빠른 메모") }) },
-        floatingActionButton = { FloatingActionButton(onClick = { adding = true }) { Icon(Icons.Default.Edit, "메모") } },
-    ) { pad ->
-        LazyColumn(Modifier.padding(pad)) {
-            if (memos.isEmpty()) {
-                item { Box(Modifier.fillMaxWidth().padding(40.dp), Alignment.Center) { Text("라운딩 중 환자 요청을 적어두세요.", color = Color.Gray) } }
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 90.dp)) {
+            item { Text("빠른 메모", style = NurseType.h1, color = c.text, modifier = Modifier.padding(start = 20.dp, top = 54.dp)) }
+            item { Text("대기 ${pending.size}", style = NurseType.caption.copy(fontWeight = FontWeight.W800), color = c.sub, modifier = Modifier.padding(20.dp, 16.dp, 20.dp, 9.dp)) }
+            items(pending, key = { it.id }) { m -> MemoCard(m, false) { vm.setMemoDone(m, true) } }
+            if (done.isNotEmpty()) {
+                item { Text("완료 ${done.size}", style = NurseType.caption.copy(fontWeight = FontWeight.W800), color = c.sub, modifier = Modifier.padding(20.dp, 18.dp, 20.dp, 9.dp)) }
+                items(done, key = { it.id }) { m -> MemoCard(m, true) { vm.setMemoDone(m, false) } }
             }
-            if (pending.isNotEmpty()) item { SectionHeader("대기 ${pending.size}") }
-            items(pending, key = { it.id }) { m -> MemoRow(m, vm) }
-            if (done.isNotEmpty()) item { SectionHeader("완료") }
-            items(done, key = { it.id }) { m -> MemoRow(m, vm) }
+        }
+        Box(Modifier.align(Alignment.BottomEnd).padding(20.dp).size(56.dp).clip(CircleShape).background(Duty.brandGradient).clickable { onCompose() }, Alignment.Center) {
+            Icon(Icons.Filled.Edit, "메모 추가", tint = Color.White, modifier = Modifier.size(23.dp))
         }
     }
-    if (adding) MemoDialog(onDismiss = { adding = false }) { bed, text -> vm.addMemo(bed, text); adding = false }
 }
 
 @Composable
-private fun MemoRow(m: QuickMemoEntity, vm: NurseViewModel) {
-    ListItem(
-        headlineContent = { Text(m.text, color = if (m.isDone) Color.Gray else Color.Unspecified) },
-        overlineContent = { if (m.bedTag.isNotBlank()) Text(m.bedTag, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold) },
-        leadingContent = {
-            IconButton(onClick = { vm.setMemoDone(m, !m.isDone) }) {
-                Icon(if (m.isDone) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked, "완료")
+private fun MemoCard(m: QuickMemoEntity, isDone: Boolean, onToggle: () -> Unit) {
+    val c = LocalNurse.current
+    Row(Modifier.padding(16.dp, 0.dp, 16.dp, 10.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(c.cardBg)
+        .border(1.dp, c.cardBorder, RoundedCornerShape(16.dp)).padding(14.dp).then(if (isDone) Modifier.alpha(0.62f) else Modifier),
+        verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+        BedChip(m.bedTag, if (isDone) c.faint else Color(0xFF3182F6))
+        Column(Modifier.weight(1f)) {
+            Text(m.text, style = NurseType.bodyStrong.copy(fontWeight = FontWeight.W500), color = if (isDone) c.sub else c.text,
+                textDecoration = if (isDone) TextDecoration.LineThrough else null)
+        }
+        Icon(if (isDone) Icons.Filled.CheckCircle else Icons.Outlined.Circle, "완료", tint = if (isDone) Duty.Success else c.faint,
+            modifier = Modifier.size(23.dp).clickable { onToggle() })
+    }
+}
+
+// ==================== ASSIGN SHEET ====================
+@Composable
+fun AssignSheet(vm: NurseViewModel, day: Int, onClose: () -> Unit, onDay: (Int) -> Unit) {
+    val c = LocalNurse.current
+    val profiles by vm.profiles.collectAsStateWithLifecycle()
+    val assignments by vm.assignments.collectAsStateWithLifecycle()
+    val active = profiles.filter { !it.isArchived }
+    val existing = assignments.firstOrNull { it.dayKey == day }
+    var pickId by remember(day) { mutableStateOf(existing?.dutyProfileId) }
+    var charge by remember(day) { mutableStateOf(existing?.charge == true) }
+    val picked = active.firstOrNull { it.id == pickId }
+    val chargeable = picked != null && ChargeRules.chargeable(picked.kind)
+
+    Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().background(Color(0x80140F08)).clickable { onClose() })
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().clip(RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp)).background(c.sheetBg).padding(20.dp, 12.dp, 20.dp, 26.dp)) {
+            Box(Modifier.align(Alignment.CenterHorizontally).padding(bottom = 14.dp).width(40.dp).height(5.dp).clip(CircleShape).background(c.grab))
+            Text(dayLabel(day), style = NurseType.caption, color = c.sub)
+            Text("근무를 선택하세요", style = NurseType.sheetTitle, color = c.text, modifier = Modifier.padding(top = 2.dp, bottom = 16.dp))
+            active.forEach { p ->
+                val sel = pickId == p.id
+                Row(Modifier.padding(bottom = 9.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                    .background(if (sel) Color(0xFF3182F6).copy(if (c.dark) 0.14f else 0.07f) else Color.Transparent)
+                    .border(2.dp, if (sel) Color(0xFF3182F6) else c.cardBorder, RoundedCornerShape(16.dp))
+                    .clickable { pickId = p.id; if (!ChargeRules.chargeable(p.kind)) charge = false }.padding(13.dp, 13.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(13.dp)) {
+                    Avatar(p.kind, 40.dp, 12.dp)
+                    Column(Modifier.weight(1f)) {
+                        Text(dutyDisplay(p), style = NurseType.rowTitle, color = c.text)
+                        Text(p.timeText.ifBlank { "—" }, style = NurseType.label.copy(fontWeight = FontWeight.W600), color = c.sub)
+                    }
+                    if (sel) Icon(Icons.Filled.CheckCircle, null, tint = Color(0xFF3182F6), modifier = Modifier.size(24.dp))
+                    else Box(Modifier.size(22.dp).clip(CircleShape).border(2.dp, c.grab, CircleShape))
+                }
             }
-        },
-        trailingContent = { IconButton(onClick = { vm.deleteMemo(m) }) { Icon(Icons.Default.Delete, "삭제") } },
-    )
-    HorizontalDivider()
+            if (chargeable) {
+                Row(Modifier.padding(top = 3.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                    .background(if (charge) Duty.Gold.copy(if (c.dark) 0.13f else 0.10f) else Color.Transparent)
+                    .border(2.dp, if (charge) Duty.Gold else c.cardBorder, RoundedCornerShape(16.dp))
+                    .clickable { charge = !charge }.padding(15.dp, 13.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+                    Icon(Icons.Filled.WorkspacePremium, null, tint = Color(0xFFCA9A08), modifier = Modifier.size(20.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("차지 간호사", style = NurseType.bodyStrong.copy(fontWeight = FontWeight.W700), color = c.text)
+                        Text("이 번의 팀 리더 역할", style = NurseType.label.copy(fontWeight = FontWeight.W600), color = c.sub)
+                    }
+                    MiniSwitch(charge)
+                }
+            }
+            Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(Modifier.clip(RoundedCornerShape(16.dp)).background(c.clearBg).clickable { vm.clearAssign(day); onClose() }.padding(18.dp, 16.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(Icons.Filled.Delete, null, tint = Duty.Danger, modifier = Modifier.size(18.dp))
+                    Text("지우기", style = NurseType.bodyStrong.copy(fontWeight = FontWeight.W700), color = Duty.Danger)
+                }
+                Box(Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).background(Duty.brandGradient)
+                    .clickable(enabled = pickId != null) { pickId?.let { vm.assign(day, it, charge && chargeable); onDay(nextDay(day)) } }
+                    .padding(vertical = 16.dp), Alignment.Center) {
+                    Text("저장하기", style = NurseType.rowTitle, color = Color.White)
+                }
+            }
+        }
+    }
 }
 
 @Composable
-fun SettingsScreen(vm: NurseViewModel) {
+private fun MiniSwitch(on: Boolean) {
+    Box(Modifier.width(46.dp).height(28.dp).clip(CircleShape).background(if (on) Duty.Gold else Color(0xFFCBD5E1))) {
+        Box(Modifier.padding(3.dp).offset(x = if (on) 18.dp else 0.dp).size(22.dp).clip(CircleShape).background(Color.White))
+    }
+}
+
+// ==================== COMPOSER ====================
+@Composable
+fun ComposerSheet(vm: NurseViewModel, onClose: () -> Unit) {
+    val c = LocalNurse.current
+    var bed by remember { mutableStateOf("") }
+    var text by remember { mutableStateOf("") }
+    Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().background(Color(0x80140F08)).clickable { onClose() })
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().clip(RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp)).background(c.sheetBg).padding(20.dp, 12.dp, 20.dp, 26.dp)) {
+            Box(Modifier.align(Alignment.CenterHorizontally).padding(bottom = 14.dp).width(40.dp).height(5.dp).clip(CircleShape).background(c.grab))
+            Text("빠른 메모 추가", style = NurseType.sheetTitle, color = c.text, modifier = Modifier.padding(bottom = 16.dp))
+            Text("병상", style = NurseType.label, color = c.sub, modifier = Modifier.padding(bottom = 7.dp))
+            SheetField(bed, { bed = it }, "예: 1002:03", KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
+            Spacer(Modifier.height(14.dp))
+            Text("메모", style = NurseType.label, color = c.sub, modifier = Modifier.padding(bottom = 7.dp))
+            SheetField(text, { text = it }, "예: 진통제 호소 — 처방 확인")
+            Spacer(Modifier.height(18.dp))
+            val enabled = text.trim().isNotEmpty()
+            Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(if (enabled) Duty.brandGradient else Brush.linearGradient(listOf(Color(0xFFB9C7DE), Color(0xFFB9C7DE))))
+                .clickable(enabled = enabled) { vm.addMemo(bed.trim(), text.trim()); onClose() }.padding(vertical = 16.dp), Alignment.Center) {
+                Text("추가하기", style = NurseType.rowTitle, color = Color.White)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SheetField(value: String, onValue: (String) -> Unit, placeholder: String, ko: KeyboardOptions = KeyboardOptions.Default) {
+    val c = LocalNurse.current
+    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).background(c.inputBg).border(1.5.dp, c.inputBorder, RoundedCornerShape(13.dp)).padding(15.dp, 13.dp)) {
+        BasicTextFieldStyled(value, onValue, placeholder, ko)
+    }
+}
+
+@Composable
+private fun BasicTextFieldStyled(value: String, onValue: (String) -> Unit, placeholder: String, ko: KeyboardOptions) {
+    val c = LocalNurse.current
+    androidx.compose.foundation.text.BasicTextField(
+        value = value, onValueChange = onValue, singleLine = true, keyboardOptions = ko,
+        textStyle = NurseType.bodyStrong.copy(color = c.text),
+        cursorBrush = Brush.linearGradient(listOf(Color(0xFF3182F6), Color(0xFF3182F6))),
+        decorationBox = { inner -> if (value.isEmpty()) Text(placeholder, style = NurseType.bodyStrong, color = c.faint); inner() },
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+// ==================== SETTINGS ====================
+@Composable
+fun SettingsScreen(vm: NurseViewModel, onBack: () -> Unit) {
+    val c = LocalNurse.current
     val context = LocalContext.current
     val profiles by vm.profiles.collectAsStateWithLifecycle()
     val assignments by vm.assignments.collectAsStateWithLifecycle()
     var message by remember { mutableStateOf<String?>(null) }
-
     val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) vm.export(uri, context.contentResolver) { ok -> message = if (ok) "내보내기 완료" else "내보내기 실패" }
     }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) vm.import(uri, context.contentResolver) { ok -> message = if (ok) "복원 완료" else "복원 실패" }
     }
-    message?.let { msg ->
-        LaunchedEffect(msg) { Toast.makeText(context, msg, Toast.LENGTH_SHORT).show(); message = null }
-    }
+    message?.let { msg -> LaunchedEffect(msg) { Toast.makeText(context, msg, Toast.LENGTH_SHORT).show(); message = null } }
 
-    // this month per-duty counts
+    val byId = profiles.associateBy { it.id }
     val ym = YearMonth.now().let { it.year * 10000 + it.monthValue * 100 }
-    val profileById = profiles.associateBy { it.id }
-    val counts = assignments.filter { it.dayKey in ym..(ym + 99) }
-        .groupingBy { it.dutyProfileId }.eachCount()
+    val counts = assignments.filter { it.dayKey in ym..(ym + 99) }.groupingBy { byId[it.dutyProfileId]?.kind ?: "?" }.eachCount()
 
-    Scaffold(topBar = { TopAppBar(title = { Text("설정") }) }) { pad ->
-        LazyColumn(Modifier.padding(pad)) {
-            item { SectionHeader("이번 달") }
-            if (counts.isEmpty()) {
-                item { Text("이번 달 배정 없음", Modifier.padding(16.dp), color = Color.Gray) }
-            } else {
-                profiles.forEach { p ->
-                    val n = counts[p.id] ?: 0
-                    if (n > 0) item(key = p.id) {
-                        ListItem(
-                            headlineContent = { Text(p.name) },
-                            leadingContent = { Box(Modifier.size(12.dp).clip(CircleShape).background(colorFromHex(p.colorHex))) },
-                            trailingContent = { Text("${n}일", color = Color.Gray) },
-                        )
+    Box(Modifier.fillMaxSize().background(c.bg)) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+            item {
+                Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 20.dp, top = 52.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.ChevronLeft, "뒤로", tint = c.text, modifier = Modifier.size(28.dp).clickable { onBack() })
+                    Text("설정", style = NurseType.h1, color = c.text)
+                }
+            }
+            item { Text("이번 달", style = NurseType.label, color = c.sub, modifier = Modifier.padding(20.dp, 20.dp, 20.dp, 8.dp)) }
+            item {
+                SoftCard(Modifier.padding(horizontal = 16.dp), pad = 6.dp) {
+                    val rows = Duty.KINDS.filter { (counts[it] ?: 0) > 0 }
+                    if (rows.isEmpty()) Text("이번 달 배정 없음", style = NurseType.body, color = c.sub, modifier = Modifier.padding(12.dp))
+                    rows.forEach { k ->
+                        Row(Modifier.fillMaxWidth().padding(12.dp, 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Box(Modifier.size(12.dp).clip(CircleShape).background(Duty.color(k)))
+                            Text(Duty.ko(k), style = NurseType.bodyStrong, color = c.text, modifier = Modifier.weight(1f))
+                            Text("${counts[k]}일", style = NurseType.bodyStrong, color = c.sub)
+                        }
                     }
                 }
             }
-            item { SectionHeader("백업") }
+            item { Text("백업", style = NurseType.label, color = c.sub, modifier = Modifier.padding(20.dp, 20.dp, 20.dp, 8.dp)) }
             item {
-                ListItem(
-                    headlineContent = { Text("내보내기 (JSON)") },
-                    leadingContent = { Icon(Icons.Default.Upload, null) },
-                    modifier = Modifier.clickable { exporter.launch("NurseDuty-backup.json") },
-                )
-            }
-            item {
-                ListItem(
-                    headlineContent = { Text("불러오기 (복원)") },
-                    supportingContent = { Text("현재 데이터를 덮어씁니다") },
-                    leadingContent = { Icon(Icons.Default.Download, null) },
-                    modifier = Modifier.clickable { importer.launch(arrayOf("application/json")) },
-                )
+                SoftCard(Modifier.padding(horizontal = 16.dp), pad = 6.dp) {
+                    SettingRow(Icons.Filled.Upload, "내보내기 (JSON)") { exporter.launch("NurseDuty-backup.json") }
+                    SettingRow(Icons.Filled.Download, "불러오기 (복원)") { importer.launch(arrayOf("application/json")) }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun SectionHeader(text: String) =
-    Text(text, Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp),
-        style = MaterialTheme.typography.labelLarge, color = Color.Gray)
-
-// ---- dialogs ----
-
-@Composable
-fun ProfileDialog(existing: DutyProfileEntity?, onDismiss: () -> Unit, onSave: (String, String) -> Unit) {
-    var name by remember { mutableStateOf(existing?.name ?: "") }
-    var color by remember { mutableStateOf(existing?.colorHex ?: swatches.first()) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (existing == null) "새 듀티" else "듀티 편집") },
-        text = {
-            Column {
-                OutlinedTextField(name, { name = it }, label = { Text("이름") }, singleLine = true)
-                Spacer(Modifier.height(12.dp))
-                Row {
-                    swatches.forEach { hex ->
-                        Box(Modifier.padding(4.dp).size(30.dp).clip(CircleShape).background(colorFromHex(hex))
-                            .clickable { color = hex }, Alignment.Center) {
-                            if (hex == color) Icon(Icons.Default.Check, null, tint = Color.White)
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = { if (name.isNotBlank()) onSave(name.trim(), color) }) { Text("저장") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
-    )
+private fun SettingRow(icon: ImageVector, label: String, onClick: () -> Unit) {
+    val c = LocalNurse.current
+    Row(Modifier.fillMaxWidth().clickable { onClick() }.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(c.chipBg), Alignment.Center) { Icon(icon, null, tint = c.sub, modifier = Modifier.size(19.dp)) }
+        Text(label, style = NurseType.rowTitle.copy(fontWeight = FontWeight.W600), color = c.text, modifier = Modifier.weight(1f))
+        Icon(Icons.Filled.ChevronRight, null, tint = c.faint, modifier = Modifier.size(18.dp))
+    }
 }
 
-@Composable
-fun AlarmDialog(alarm: AlarmEntity, onDismiss: () -> Unit, onSave: (AlarmEntity) -> Unit) {
-    var label by remember { mutableStateOf(alarm.label) }
-    var hour by remember { mutableStateOf(alarm.hour.toString()) }
-    var minute by remember { mutableStateOf("%02d".format(alarm.minute)) }
-    var nextDay by remember { mutableStateOf(alarm.dayOffset > 0) }
-    var enabled by remember { mutableStateOf(alarm.enabled) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("알람") },
-        text = {
-            Column {
-                OutlinedTextField(label, { label = it }, label = { Text("이름 (예: 인계)") }, singleLine = true)
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(hour, { hour = it.filter(Char::isDigit).take(2) }, label = { Text("시") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.width(80.dp))
-                    Spacer(Modifier.width(8.dp)); Text(":"); Spacer(Modifier.width(8.dp))
-                    OutlinedTextField(minute, { minute = it.filter(Char::isDigit).take(2) }, label = { Text("분") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.width(80.dp))
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Switch(nextDay, { nextDay = it }); Spacer(Modifier.width(8.dp)); Text("다음 날(익일)")
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Switch(enabled, { enabled = it }); Spacer(Modifier.width(8.dp)); Text("알람 켜기")
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                val h = hour.toIntOrNull()?.coerceIn(0, 23) ?: 0
-                val m = minute.toIntOrNull()?.coerceIn(0, 59) ?: 0
-                if (label.isNotBlank()) onSave(alarm.copy(label = label.trim(), hour = h, minute = m,
-                    dayOffset = if (nextDay) 1 else 0, enabled = enabled))
-            }) { Text("저장") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
-    )
+// ---- helpers ----
+private fun todayDate(): String {
+    val d = LocalDate.now(); val dow = listOf("월", "화", "수", "목", "금", "토", "일")[d.dayOfWeek.value - 1]
+    return "${d.monthValue}월 ${d.dayOfMonth}일 ($dow)"
 }
-
-@Composable
-fun TextDialog(title: String, initial: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
-    var text by remember { mutableStateOf(initial) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = { OutlinedTextField(text, { text = it }, label = { Text("할 일") }) },
-        confirmButton = { TextButton(onClick = { if (text.isNotBlank()) onSave(text.trim()) }) { Text("저장") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
-    )
+private fun dayLabel(dayKey: Int): String { val d = DayKey.toLocalDate(dayKey); return "${d.monthValue}월 ${d.dayOfMonth}일" }
+private fun nextDay(dayKey: Int): Int = DayKey.from(DayKey.toLocalDate(dayKey).plusDays(1))
+private fun progressNote(done: Int, total: Int): String {
+    val rem = total - done
+    return if (rem == 0) "모두 완료! 고생하셨어요 🎉" else if (rem == 1) "하나만 더 하면 끝나요!" else "$done/$total 완료"
 }
-
-@Composable
-fun MemoDialog(onDismiss: () -> Unit, onSave: (String, String) -> Unit) {
-    var bed by remember { mutableStateOf("") }
-    var text by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("빠른 메모") },
-        text = {
-            Column {
-                OutlinedTextField(bed, { bed = it }, label = { Text("병상 (예: 1001:01)") }, singleLine = true)
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(text, { text = it }, label = { Text("메모 (예: 진통제 호소)") })
-            }
-        },
-        confirmButton = { TextButton(onClick = { if (text.isNotBlank()) onSave(bed.trim(), text.trim()) }) { Text("저장") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
-    )
+private fun weatherIcon(kind: String, day: Boolean): ImageVector = when (kind) {
+    "sun" -> if (day) Icons.Filled.WbSunny else Icons.Filled.NightlightRound
+    "cloudsun" -> Icons.Filled.Cloud; "cloud" -> Icons.Filled.Cloud; "fog" -> Icons.Filled.Cloud
+    "rain" -> Icons.Filled.WaterDrop; "snow" -> Icons.Filled.AcUnit; "storm" -> Icons.Filled.Bolt
+    else -> Icons.Filled.WbSunny
 }

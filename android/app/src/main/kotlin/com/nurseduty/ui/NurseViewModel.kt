@@ -10,14 +10,42 @@ import com.nurseduty.data.AlarmEntity
 import com.nurseduty.data.ChecklistItemEntity
 import com.nurseduty.data.DutyProfileEntity
 import com.nurseduty.data.QuickMemoEntity
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import org.json.JSONObject
+import java.net.URL
 import java.util.UUID
+
+data class WeatherUi(val isLive: Boolean, val loc: String, val temp: String, val icon: String)
 
 class NurseViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = (app as NurseApp).repository
+
+    private val _weather = MutableStateFlow(WeatherUi(false, "서울", "—", "sun"))
+    val weather: StateFlow<WeatherUi> = _weather.asStateFlow()
+
+    init {
+        // Seoul default; geolocation ("현위치") is a later add. ponytail: no permission dance for v1.
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val body = URL("https://api.open-meteo.com/v1/forecast?latitude=37.5665&longitude=126.9780&current=temperature_2m,weather_code").readText()
+                val cur = JSONObject(body).getJSONObject("current")
+                val temp = Math.round(cur.getDouble("temperature_2m")).toInt()
+                _weather.value = WeatherUi(true, "서울", "$temp°", weatherKind(cur.getInt("weather_code")))
+            }
+        }
+    }
+
+    private fun weatherKind(code: Int) = when (code) {
+        0 -> "sun"; 1, 2 -> "cloudsun"; 3 -> "cloud"; 45, 48 -> "fog"
+        in 51..67, in 80..82 -> "rain"; in 71..77 -> "snow"; in 95..99 -> "storm"; else -> "sun"
+    }
 
     private fun <T> Flow<List<T>>.ui() =
         stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -29,7 +57,7 @@ class NurseViewModel(app: Application) : AndroidViewModel(app) {
     val assignments = repo.assignments.ui()
     val memos = repo.memos.ui()
 
-    fun assign(dayKey: Int, profileId: String) = go { repo.assignDuty(dayKey, profileId) }
+    fun assign(dayKey: Int, profileId: String, charge: Boolean = false) = go { repo.assignDuty(dayKey, profileId, charge) }
     fun clearAssign(dayKey: Int) = go { repo.clearAssignment(dayKey) }
     fun toggleCheck(itemId: String, dayKey: Int) = go { repo.toggleCheck(itemId, dayKey) }
 

@@ -5,12 +5,15 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import kotlinx.serialization.Serializable
 
+// kind drives the hero sky gradient + letter/short label: Day/Mid/Evening/Night/Off/Custom
 @Serializable
 @Entity(tableName = "duty_profile")
 data class DutyProfileEntity(
     @PrimaryKey val id: String,
     val name: String,
     val colorHex: String,
+    val kind: String = "Custom",
+    val timeText: String = "",
     val isPreset: Boolean = false,
     val isArchived: Boolean = false,
     val sortOrder: Int = 0,
@@ -40,7 +43,6 @@ data class ChecklistItemEntity(
     val sortOrder: Int = 0,
 )
 
-// presence == checked; unique per (item, day) so yesterday's checks don't bleed.
 @Serializable
 @Entity(
     tableName = "checklist_check",
@@ -53,12 +55,13 @@ data class ChecklistCheckEntity(
     val checkedAt: Long = 0,
 )
 
-// dayKey as the primary key enforces one-duty-per-day (upsert = REPLACE).
+// dayKey PK = one duty per day. charge is a per-assignment modifier (팀 리더 역할).
 @Serializable
 @Entity(tableName = "shift_assignment")
 data class ShiftAssignmentEntity(
     @PrimaryKey val dayKey: Int,
     val dutyProfileId: String,
+    val charge: Boolean = false,
     val note: String? = null,
 )
 

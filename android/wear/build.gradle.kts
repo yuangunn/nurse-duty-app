@@ -20,8 +20,8 @@ android {
         applicationId = "com.yuangunn.nurseduty"   // same id as the phone app -> pairs as its watch companion
         minSdk = 30                                 // Wear OS 3+
         targetSdk = 34
-        versionCode = 101   // wear uses the 100s band: Play requires unique versionCodes per package
-        versionName = "0.4"
+        versionCode = 102   // wear uses the 100s band: Play requires unique versionCodes per package
+        versionName = "0.5"
     }
 
     buildFeatures { compose = true; buildConfig = true }

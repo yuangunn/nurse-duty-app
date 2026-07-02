@@ -12,6 +12,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -24,6 +26,7 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -97,15 +100,18 @@ fun AppRoot(vm: NurseViewModel) {
         }
     }
 
+    val tabStates = rememberSaveableStateHolder()   // keep per-tab state (month, scroll) across switches
     Box(Modifier.fillMaxSize().background(c.bg)) {
         Column(Modifier.fillMaxSize()) {
             Box(Modifier.weight(1f)) {
+                tabStates.SaveableStateProvider(tab) {
                 when (tab) {
                     0 -> HomeScreen(vm, onGear = { showSettings = true }, onMemo = { tab = 3 })
                     1 -> CalendarScreen(vm, onDay = { sheetDay = it }, onRotate = { rotateMonth = it })
                     2 -> DutyScreen(vm, onEdit = { editProfileId = it })
                     3 -> MemoScreen(vm, onCompose = { composerOpen = true })
                     else -> PillCheckScreen(pillCheck)
+                }
                 }
             }
             BottomBar(tab) { tab = it }
@@ -370,7 +376,7 @@ fun HomeScreen(vm: NurseViewModel, onGear: () -> Unit, onMemo: () -> Unit) {
                     todayItems.forEach { (id, text) ->
                         val on = checkedToday.contains(id)
                         val isCharge = id == ChargeRules.ITEM_ID
-                        Row(Modifier.fillMaxWidth().clickable { vm.toggleCheck(id, todayKey) }.padding(vertical = 7.dp),
+                        Row(Modifier.fillMaxWidth().toggleable(value = on, role = Role.Checkbox) { vm.toggleCheck(id, todayKey) }.padding(vertical = 7.dp),
                             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
                             Icon(if (on) Icons.Filled.CheckCircle else Icons.Outlined.Circle, null,
                                 tint = if (on) Duty.Success else if (c.dark) Color(0xFF3A3324) else Color(0xFFDCD2C0), modifier = Modifier.size(23.dp))
@@ -461,16 +467,18 @@ fun CalendarScreen(vm: NurseViewModel, onDay: (Int) -> Unit, onRotate: (Int) -> 
                     .border(1.dp, c.cardBorder, CircleShape).clickable { onRotate(monthKey) }, Alignment.Center) {
                     Icon(Icons.Filled.Repeat, "로테이션 일괄 입력", tint = c.sub, modifier = Modifier.size(16.dp))
                 }
-                Icon(Icons.Filled.ChevronLeft, "이전", tint = c.sub, modifier = Modifier.size(22.dp).clickable { monthKey = month.minusMonths(1).run { year * 100 + monthValue } })
+                Icon(Icons.Filled.ChevronLeft, "이전 달", tint = c.sub, modifier = Modifier.minimumInteractiveComponentSize().size(22.dp).clickable { monthKey = month.minusMonths(1).run { year * 100 + monthValue } })
                 Text("${month.year}. ${month.monthValue}", style = NurseType.rowTitle, color = c.text, modifier = Modifier.padding(horizontal = 12.dp))
-                Icon(Icons.Filled.ChevronRight, "다음", tint = c.sub, modifier = Modifier.size(22.dp).clickable { monthKey = month.plusMonths(1).run { year * 100 + monthValue } })
+                Icon(Icons.Filled.ChevronRight, "다음 달", tint = c.sub, modifier = Modifier.minimumInteractiveComponentSize().size(22.dp).clickable { monthKey = month.plusMonths(1).run { year * 100 + monthValue } })
             }
         }
         item {
             SoftCard(Modifier.padding(16.dp, 16.dp, 16.dp, 0.dp), pad = 12.dp) {
                 Row(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                    listOf("일", "월", "화", "수", "목", "금", "토").forEach {
-                        Text(it, style = NurseType.micro, color = c.faint, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    listOf("일", "월", "화", "수", "목", "금", "토").forEachIndexed { i, d ->
+                        Text(d, style = NurseType.micro,
+                            color = when (i) { 0 -> Color(0xFFE5484D).copy(0.75f); 6 -> Color(0xFF3182F6).copy(0.75f); else -> c.faint },
+                            modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     }
                 }
                 val first = month.atDay(1)
@@ -500,8 +508,16 @@ fun CalendarScreen(vm: NurseViewModel, onDay: (Int) -> Unit, onRotate: (Int) -> 
                                         })
                                         .clickable { onDay(dk) }) {
                                         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                            val restDay = day.dayOfWeek.value == 7 || dk in KoreanHolidays.table
+                                            val satDay = day.dayOfWeek.value == 6
                                             Text("${day.dayOfMonth}", style = NurseType.label,
-                                                color = if (p != null) (if (isToday) Color.White else c.text) else if (isToday) c.tabSel else c.faint)
+                                                color = when {
+                                                    p != null -> if (isToday) Color.White else c.text
+                                                    isToday -> c.tabSel
+                                                    restDay -> Color(0xFFE5484D).copy(0.8f)   // 일요일·공휴일
+                                                    satDay -> Color(0xFF3182F6).copy(0.7f)
+                                                    else -> c.faint
+                                                })
                                             if (p != null) Text(Duty.short(p.kind), style = NurseType.micro.copy(fontWeight = FontWeight.W800),
                                                 color = if (isToday) Color.White.copy(0.92f) else col!!)
                                         }
@@ -548,6 +564,22 @@ fun CalendarScreen(vm: NurseViewModel, onDay: (Int) -> Unit, onRotate: (Int) -> 
                         Icon(Icons.Filled.WorkspacePremium, null, tint = Duty.Gold, modifier = Modifier.size(15.dp))
                         Text("그 중 차지 근무", style = NurseType.caption, color = c.text, modifier = Modifier.weight(1f))
                         Text("${chargeDays}일", style = NurseType.caption.copy(fontWeight = FontWeight.W800), color = c.text)
+                    }
+                    // 연속 나이트 경고 — 입력 직후 한눈에 보이는 안전 신호
+                    val nightStreak = run {
+                        var best = 0; var cur = 0
+                        (1..month.lengthOfMonth()).forEach { d ->
+                            val k = byDay[monthKey * 100 + d]?.let { byId[it.dutyProfileId]?.kind }
+                            if (k == "Night") { cur++; if (cur > best) best = cur } else cur = 0
+                        }
+                        best
+                    }
+                    if (nightStreak >= 3) {
+                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(11.dp)).background(Duty.Danger.copy(0.10f)).padding(11.dp, 9.dp),
+                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(Icons.Filled.NightsStay, null, tint = Duty.Danger, modifier = Modifier.size(15.dp))
+                            Text("연속 나이트 ${nightStreak}일 — 휴식을 꼭 챙겨주세요", style = NurseType.caption.copy(fontWeight = FontWeight.W700), color = Duty.Danger)
+                        }
                     }
                 }
             }
@@ -628,7 +660,7 @@ fun MemoScreen(vm: NurseViewModel, onCompose: () -> Unit) {
             items(pending, key = { it.id }) { m -> MemoCard(m, false) { vm.setMemoDone(m, true) } }
             if (done.isNotEmpty()) {
                 item { Text("완료 ${done.size}", style = NurseType.caption.copy(fontWeight = FontWeight.W800), color = c.sub, modifier = Modifier.padding(20.dp, 18.dp, 20.dp, 9.dp)) }
-                items(done, key = { it.id }) { m -> MemoCard(m, true) { vm.setMemoDone(m, false) } }
+                items(done, key = { it.id }) { m -> MemoCard(m, true, onDelete = { vm.deleteMemo(m) }) { vm.setMemoDone(m, false) } }
             }
         }
         Box(Modifier.align(Alignment.BottomEnd).padding(20.dp).size(56.dp).clip(CircleShape).background(Duty.brandGradient).clickable { onCompose() }, Alignment.Center) {
@@ -638,7 +670,7 @@ fun MemoScreen(vm: NurseViewModel, onCompose: () -> Unit) {
 }
 
 @Composable
-private fun MemoCard(m: QuickMemoEntity, isDone: Boolean, onToggle: () -> Unit) {
+private fun MemoCard(m: QuickMemoEntity, isDone: Boolean, onDelete: (() -> Unit)? = null, onToggle: () -> Unit) {
     val c = LocalNurse.current
     Row(Modifier.padding(16.dp, 0.dp, 16.dp, 10.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(c.cardBg)
         .border(1.dp, c.cardBorder, RoundedCornerShape(16.dp)).padding(14.dp).then(if (isDone) Modifier.alpha(0.62f) else Modifier),
@@ -649,7 +681,11 @@ private fun MemoCard(m: QuickMemoEntity, isDone: Boolean, onToggle: () -> Unit) 
                 textDecoration = if (isDone) TextDecoration.LineThrough else null)
         }
         Icon(if (isDone) Icons.Filled.CheckCircle else Icons.Outlined.Circle, "완료", tint = if (isDone) Duty.Success else c.faint,
-            modifier = Modifier.size(23.dp).clickable { onToggle() })
+            modifier = Modifier.minimumInteractiveComponentSize().size(23.dp).clickable { onToggle() })
+        if (onDelete != null) {
+            Icon(Icons.Filled.Close, "메모 삭제", tint = c.faint,
+                modifier = Modifier.minimumInteractiveComponentSize().size(19.dp).clickable { onDelete() })
+        }
     }
 }
 
@@ -663,6 +699,7 @@ fun AssignSheet(vm: NurseViewModel, day: Int, onClose: () -> Unit, onDay: (Int) 
     val existing = assignments.firstOrNull { it.dayKey == day }
     var pickId by remember(day) { mutableStateOf(existing?.dutyProfileId) }
     var charge by remember(day) { mutableStateOf(existing?.charge == true) }
+    var note by remember(day) { mutableStateOf(existing?.note ?: "") }
     val picked = active.firstOrNull { it.id == pickId }
     val chargeable = picked != null && ChargeRules.chargeable(picked.kind)
 
@@ -702,6 +739,8 @@ fun AssignSheet(vm: NurseViewModel, day: Int, onClose: () -> Unit, onDay: (Int) 
                     MiniSwitch(charge)
                 }
             }
+            Spacer(Modifier.height(12.dp))
+            SheetField(note, { note = it }, "인계 메모 (선택)")
             Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(Modifier.clip(RoundedCornerShape(16.dp)).background(c.clearBg).clickable { vm.clearAssign(day); onClose() }.padding(18.dp, 16.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -709,7 +748,7 @@ fun AssignSheet(vm: NurseViewModel, day: Int, onClose: () -> Unit, onDay: (Int) 
                     Text("지우기", style = NurseType.bodyStrong.copy(fontWeight = FontWeight.W700), color = Duty.Danger)
                 }
                 Box(Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).background(Duty.brandGradient)
-                    .clickable(enabled = pickId != null) { pickId?.let { vm.assign(day, it, charge && chargeable); onDay(nextDay(day)) } }
+                    .clickable(enabled = pickId != null) { pickId?.let { vm.assign(day, it, charge && chargeable, note.trim().ifBlank { null }); onDay(nextDay(day)) } }
                     .padding(vertical = 16.dp), Alignment.Center) {
                     Text("저장하기", style = NurseType.rowTitle, color = Color.White)
                 }
@@ -817,6 +856,24 @@ fun SettingsScreen(vm: NurseViewModel, onBack: () -> Unit) {
                             Box(Modifier.size(12.dp).clip(CircleShape).background(Duty.color(k)))
                             Text(Duty.ko(k), style = NurseType.bodyStrong, color = c.text, modifier = Modifier.weight(1f))
                             Text("${counts[k]}일", style = NurseType.bodyStrong, color = c.sub)
+                        }
+                    }
+                }
+            }
+            item { Text("화면", style = NurseType.label, color = c.sub, modifier = Modifier.padding(20.dp, 20.dp, 20.dp, 8.dp)) }
+            item {
+                val theme by vm.themePref.collectAsStateWithLifecycle()
+                SoftCard(Modifier.padding(horizontal = 16.dp), pad = 14.dp) {
+                    Text("테마", style = NurseType.label, color = c.sub, modifier = Modifier.padding(bottom = 8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("system" to "시스템", "light" to "라이트", "dark" to "다크").forEach { (v, label) ->
+                            val sel = theme == v
+                            Text(label, style = NurseType.caption.copy(fontWeight = FontWeight.W700),
+                                color = if (sel) Color.White else c.sub,
+                                modifier = Modifier.clip(RoundedCornerShape(10.dp))
+                                    .background(if (sel) Color(0xFF3182F6) else c.chipBg)
+                                    .clickable { vm.setThemePref(v) }
+                                    .padding(horizontal = 14.dp, vertical = 8.dp))
                         }
                     }
                 }

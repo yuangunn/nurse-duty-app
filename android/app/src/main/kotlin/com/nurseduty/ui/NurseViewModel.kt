@@ -38,6 +38,14 @@ class NurseViewModel(app: Application) : AndroidViewModel(app) {
         userPrefs.edit().putString("name", name).apply()
     }
 
+    /** "system" | "light" | "dark" — 나이트 근무자는 시스템과 무관하게 앱만 다크로 쓰기도 한다. */
+    private val _themePref = MutableStateFlow(userPrefs.getString("theme", "system") ?: "system")
+    val themePref: StateFlow<String> = _themePref.asStateFlow()
+    fun setThemePref(v: String) {
+        _themePref.value = v
+        userPrefs.edit().putString("theme", v).apply()
+    }
+
     private var weatherFetchedAt = 0L
 
     init { refreshWeather() }
@@ -74,7 +82,8 @@ class NurseViewModel(app: Application) : AndroidViewModel(app) {
     val assignments = repo.assignments.ui()
     val memos = repo.memos.ui()
 
-    fun assign(dayKey: Int, profileId: String, charge: Boolean = false) = go { repo.assignDuty(dayKey, profileId, charge) }
+    fun assign(dayKey: Int, profileId: String, charge: Boolean = false, note: String? = null) =
+        go { repo.assignDuty(dayKey, profileId, charge, note) }
     fun clearAssign(dayKey: Int) = go { repo.clearAssignment(dayKey) }
     fun toggleCheck(itemId: String, dayKey: Int) = go { repo.toggleCheck(itemId, dayKey) }
 

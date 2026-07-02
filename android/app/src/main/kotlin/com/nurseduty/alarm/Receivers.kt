@@ -16,7 +16,7 @@ class AlarmReceiver : BroadcastReceiver() {
             val body = intent.getStringExtra("body") ?: ""
             Notifications.ensureChannel(context)
             val notification = NotificationCompat.Builder(context, Notifications.CHANNEL)
-                .setSmallIcon(android.R.drawable.ic_popup_reminder)
+                .setSmallIcon(com.nurseduty.R.drawable.ic_stat_deno)
                 .setContentTitle(title)
                 .setContentText(body)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)

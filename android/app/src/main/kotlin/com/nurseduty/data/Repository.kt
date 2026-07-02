@@ -42,8 +42,8 @@ class Repository(
     val memos = dao.memos()
 
     // ---- assignments ----
-    suspend fun assignDuty(dayKey: Int, profileId: String, charge: Boolean = false) {
-        dao.upsertAssignment(ShiftAssignmentEntity(dayKey, profileId, charge))
+    suspend fun assignDuty(dayKey: Int, profileId: String, charge: Boolean = false, note: String? = null) {
+        dao.upsertAssignment(ShiftAssignmentEntity(dayKey, profileId, charge, note))
         rescheduleNow()
     }
 

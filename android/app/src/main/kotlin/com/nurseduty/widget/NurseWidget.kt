@@ -5,8 +5,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.DpSize
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.LocalSize
+import androidx.glance.appwidget.SizeMode
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
@@ -34,14 +37,21 @@ import com.nurseduty.data.TodayWidget
 import com.nurseduty.ui.colorFromHex
 
 class NurseWidget : GlanceAppWidget() {
+    companion object {
+        private val COMPACT = DpSize(60.dp, 60.dp)
+        private val FULL = DpSize(180.dp, 90.dp)
+    }
+
+    override val sizeMode = SizeMode.Responsive(setOf(COMPACT, FULL))
+
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val snap = (context.applicationContext as NurseApp).repository.todaySnapshot()
-        provideContent { WidgetContent(snap) }
+        provideContent { WidgetContent(snap, LocalSize.current.width >= FULL.width) }
     }
 }
 
 @Composable
-private fun WidgetContent(snap: TodayWidget) {
+private fun WidgetContent(snap: TodayWidget, full: Boolean) {
     val ink = ColorProvider(Color(0xFF241D13))
     val gray = ColorProvider(Color(0xFF8A7D6A))
     val duty = snap.colorHex?.let { colorFromHex(it) } ?: Color(0xFF94A3B8)
@@ -59,13 +69,18 @@ private fun WidgetContent(snap: TodayWidget) {
                 Text("메모 ${snap.pendingMemos}", style = TextStyle(color = ColorProvider(Color(0xFFF59E0B)), fontWeight = FontWeight.Bold, fontSize = 12.sp))
             }
         }
-        Spacer(GlanceModifier.height(6.dp))
-        if (snap.total > 0) {
-            Text("체크리스트 ${snap.done}/${snap.total}", style = TextStyle(color = ink, fontWeight = FontWeight.Medium, fontSize = 14.sp))
-        }
-        snap.nextAlarm?.let {
-            Spacer(GlanceModifier.height(2.dp))
-            Text("⏰ $it", style = TextStyle(color = gray, fontSize = 13.sp))
+        if (full) {
+            Spacer(GlanceModifier.height(6.dp))
+            if (snap.total > 0) {
+                Text("체크리스트 ${snap.done}/${snap.total}", style = TextStyle(color = ink, fontWeight = FontWeight.Medium, fontSize = 14.sp))
+            }
+            snap.nextAlarm?.let {
+                Spacer(GlanceModifier.height(2.dp))
+                Text("⏰ $it", style = TextStyle(color = gray, fontSize = 13.sp))
+            }
+        } else if (snap.total > 0) {
+            Spacer(GlanceModifier.height(4.dp))
+            Text("${snap.done}/${snap.total}", style = TextStyle(color = ink, fontWeight = FontWeight.Medium, fontSize = 13.sp))
         }
     }
 }

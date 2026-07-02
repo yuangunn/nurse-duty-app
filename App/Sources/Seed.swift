@@ -2,15 +2,19 @@ import Foundation
 import SwiftData
 import NurseDutyModel
 
-/// First-launch presets: D / E / N / Off / Charge. Night carries a +1 dayOffset "아침 인계"
-/// alarm so the night-shift-crosses-midnight path is exercised out of the box.
+/// First-launch presets — 5 shifts mirroring the Android 1b model (no 기상 alarm, charge is a
+/// modifier not a profile). Night carries a +1 dayOffset "아침 인계" so the crosses-midnight
+/// path is exercised out of the box.
 enum PresetSeeder {
     static func seedIfEmpty(_ ctx: ModelContext) {
+        migrateLegacy(ctx)   // idempotent cleanup for pre-1b installs
         let count = (try? ctx.fetchCount(FetchDescriptor<DutyProfile>())) ?? 0
         guard count == 0 else { return }
 
         for (i, preset) in presets.enumerated() {
-            let profile = DutyProfile(name: preset.name, colorHex: preset.color, isPreset: true, sortOrder: i)
+            let profile = DutyProfile(name: preset.name, colorHex: preset.color,
+                                      kind: preset.kind, timeText: preset.time,
+                                      isPreset: true, sortOrder: i)
             profile.alarms = preset.alarms.enumerated().map { idx, a in
                 AlarmItem(label: a.label, hour: a.h, minute: a.m, dayOffset: a.off, sortOrder: idx)
             }
@@ -22,27 +26,54 @@ enum PresetSeeder {
         try? ctx.save()
     }
 
+    /// Pre-1b installs: drop 기상 alarms, archive the legacy Charge profile (charge is a modifier
+    /// now), and backfill kind/timeText on the old presets by name. Safe to run every launch.
+    static func migrateLegacy(_ ctx: ModelContext) {
+        guard let profiles = try? ctx.fetch(FetchDescriptor<DutyProfile>()), !profiles.isEmpty else { return }
+        var dirty = false
+        for p in profiles {
+            if p.isPreset && p.kind == "Custom" {
+                if let preset = presets.first(where: { $0.name == p.name }) {
+                    p.kind = preset.kind
+                    if p.timeText.isEmpty { p.timeText = preset.time }
+                    dirty = true
+                } else if p.name == "Charge" && !p.isArchived {
+                    p.isArchived = true   // legacy Charge profile → modifier world
+                    dirty = true
+                }
+            }
+            for a in p.alarms where a.label == "기상" {
+                ctx.delete(a)
+                dirty = true
+            }
+        }
+        if dirty { try? ctx.save() }
+    }
+
     private struct Preset {
         let name: String
+        let kind: String
         let color: String
+        let time: String
         let alarms: [(label: String, h: Int, m: Int, off: Int)]
         let checklist: [String]
     }
 
+    // keep in lockstep with Android Repository.seedPresetsIfEmpty
     private static let presets: [Preset] = [
-        Preset(name: "Day", color: "#4F86C6",
-               alarms: [("기상", 6, 0, 0), ("인계", 7, 0, 0)],
+        Preset(name: "Day", kind: "Day", color: "#3182F6", time: "06:00 – 14:00",
+               alarms: [("인계 준비", 5, 30, 0), ("인계 · 라운드", 6, 0, 0)],
                checklist: ["활력징후 측정", "오전 투약 확인", "인계 준비"]),
-        Preset(name: "Evening", color: "#E8A33D",
-               alarms: [("출근 준비", 14, 0, 0), ("인계", 15, 0, 0)],
+        Preset(name: "Mid", kind: "Mid", color: "#14B8A6", time: "11:00 – 19:00",
+               alarms: [("인계 준비", 10, 30, 0), ("인계 · 라운드", 11, 0, 0)],
+               checklist: ["활력징후 측정", "점심 투약 확인", "처치·검사 라운드", "인계 준비"]),
+        Preset(name: "Evening", kind: "Evening", color: "#F59E0B", time: "14:00 – 22:00",
+               alarms: [("인계 준비", 13, 30, 0), ("Day 인계", 14, 0, 0)],
                checklist: ["활력징후 측정", "저녁 투약 확인", "인계 준비"]),
-        Preset(name: "Night", color: "#3B4A6B",
-               alarms: [("출근 준비", 21, 0, 0), ("인계", 22, 0, 0), ("아침 인계", 6, 0, 1)],
+        Preset(name: "Night", kind: "Night", color: "#5B5BD6", time: "22:00 – 06:00 익일",
+               alarms: [("인계 준비", 21, 30, 0), ("인계", 22, 0, 0), ("아침 인계", 6, 0, 1)],
                checklist: ["활력징후 측정", "야간 투약 확인", "낙상 위험 점검", "아침 인계 준비"]),
-        Preset(name: "Off", color: "#9AA0A6", alarms: [], checklist: []),
-        Preset(name: "Charge", color: "#C0504D",
-               alarms: [("인계", 7, 0, 0), ("팀 브리핑", 8, 0, 0)],
-               checklist: ["인력 배치 확인", "중환자 파악", "입퇴원 조율", "팀 인계"]),
+        Preset(name: "Off", kind: "Off", color: "#94A3B8", time: "휴무", alarms: [], checklist: []),
     ]
 }
 

@@ -8,6 +8,7 @@ public enum Assignments {
 
     @discardableResult
     public static func upsert(in context: ModelContext, date: Date, dutyProfileId: UUID,
+                              charge: Bool = false,
                               calendar: Calendar = .current) throws -> ShiftAssignment {
         let key = DayKey.from(date, calendar)
         let existing = try context.fetch(
@@ -15,9 +16,10 @@ public enum Assignments {
         ).first
         if let existing {
             existing.dutyProfileId = dutyProfileId
+            existing.charge = charge
             return existing
         }
-        let assignment = ShiftAssignment(date: date, dutyProfileId: dutyProfileId, calendar: calendar)
+        let assignment = ShiftAssignment(date: date, dutyProfileId: dutyProfileId, charge: charge, calendar: calendar)
         context.insert(assignment)
         return assignment
     }

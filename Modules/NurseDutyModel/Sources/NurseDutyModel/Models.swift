@@ -3,12 +3,16 @@ import SwiftData
 
 // MARK: - Duty (== Profile)
 // A duty is a profile that OWNS an alarm set + a checklist template.
-// D/E/N/Off + Charge are just preset profiles; "Charge Day" is its own profile.
+// 5 preset kinds (Day/Mid/Evening/Night/Off); charge is a per-assignment modifier, not a profile.
 @Model
 public final class DutyProfile {
     public var id: UUID
     public var name: String
     public var colorHex: String
+    /// Day / Mid / Evening / Night / Off / Custom — drives hero gradients + charge rules (1b model).
+    public var kind: String = "Custom"
+    /// Display-only shift hours, e.g. "06:00 – 14:00".
+    public var timeText: String = ""
     public var isPreset: Bool
     public var isArchived: Bool          // soft-delete: hide from pickers, keep for history. Never cascade.
     public var sortOrder: Int
@@ -20,12 +24,15 @@ public final class DutyProfile {
     public var checklistItems: [ChecklistItem]
 
     public init(id: UUID = UUID(), name: String, colorHex: String,
+                kind: String = "Custom", timeText: String = "",
                 isPreset: Bool = false, isArchived: Bool = false,
                 sortOrder: Int = 0, createdAt: Date = Date(),
                 alarms: [AlarmItem] = [], checklistItems: [ChecklistItem] = []) {
         self.id = id
         self.name = name
         self.colorHex = colorHex
+        self.kind = kind
+        self.timeText = timeText
         self.isPreset = isPreset
         self.isArchived = isArchived
         self.sortOrder = sortOrder
@@ -119,15 +126,18 @@ public final class ShiftAssignment {
     public var id: UUID
     public var dayKey: Int                  // yyyymmdd of the shift START day, timezone-independent
     public var dutyProfileId: UUID
+    /// Charge nurse (team lead) modifier — not a separate duty (1b model).
+    public var charge: Bool = false
     public var note: String?               // handover / shift note (shift-scoped, not bed-scoped)
     public var createdAt: Date
 
     public init(id: UUID = UUID(), date: Date, dutyProfileId: UUID,
-                note: String? = nil, createdAt: Date = Date(),
+                charge: Bool = false, note: String? = nil, createdAt: Date = Date(),
                 calendar: Calendar = .current) {
         self.id = id
         self.dayKey = DayKey.from(date, calendar)
         self.dutyProfileId = dutyProfileId
+        self.charge = charge
         self.note = note
         self.createdAt = createdAt
     }

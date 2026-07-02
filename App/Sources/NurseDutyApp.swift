@@ -21,6 +21,11 @@ struct NurseDutyApp: App {
         if ProcessInfo.processInfo.arguments.contains("--seed-demo") {
             DemoSeed.fillNext35Days(ModelContext(c))
         }
+        // --demo-today Night+charge : force today's duty for visual verification
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "--demo-today"), i + 1 < args.count {
+            DemoSeed.assignToday(args[i + 1], ModelContext(c))
+        }
         #endif
     }
 

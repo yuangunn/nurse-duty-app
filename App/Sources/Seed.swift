@@ -98,5 +98,16 @@ enum DemoSeed {
         }
         try? ctx.save()
     }
+
+    /// "--demo-today Night+charge" — force today's assignment to the given preset kind.
+    static func assignToday(_ spec: String, _ ctx: ModelContext) {
+        let parts = spec.split(separator: "+")
+        guard let kind = parts.first.map(String.init),
+              let p = (try? ctx.fetch(FetchDescriptor<DutyProfile>()))?.first(where: { $0.kind == kind })
+        else { return }
+        _ = try? Assignments.upsert(in: ctx, date: Date(), dutyProfileId: p.id,
+                                    charge: parts.contains("charge"))
+        try? ctx.save()
+    }
 }
 #endif

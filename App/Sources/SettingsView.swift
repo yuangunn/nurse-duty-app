@@ -19,6 +19,7 @@ struct SettingsView: View {
     @Query private var assignments: [ShiftAssignment]
     @Query(sort: \DutyProfile.sortOrder) private var profiles: [DutyProfile]
 
+    @AppStorage("userName") private var userName = ""
     @State private var exporting = false
     @State private var importing = false
     @State private var exportDoc = BackupDocument(data: Data())
@@ -27,6 +28,9 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section("프로필") {
+                    TextField("이름 (홈 인사말에 표시)", text: $userName)
+                }
                 statsSection
                 backupSection
             }

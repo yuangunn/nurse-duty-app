@@ -28,9 +28,12 @@ struct ProfilesView: View {
     }
 
     private func row(_ p: DutyProfile) -> some View {
-        HStack {
-            Circle().fill(Color(hex: p.colorHex)).frame(width: 16, height: 16)
-            Text(p.name).foregroundStyle(.primary)
+        HStack(spacing: 13) {
+            DutyAvatar(kind: p.kind, size: 42, radius: 13)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(dutyDisplay(p)).font(.system(size: 16, weight: .bold))
+                Text(p.timeText.isEmpty ? "—" : p.timeText).font(.caption).foregroundStyle(.secondary)
+            }
             Spacer()
             Text("알람 \(p.alarms.count) · 체크 \(p.checklistItems.filter { !$0.isArchived }.count)")
                 .font(.caption).foregroundStyle(.secondary)

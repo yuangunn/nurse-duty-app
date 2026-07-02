@@ -8,7 +8,7 @@ struct RootView: View {
 
     var body: some View {
         TabView(selection: $selection) {
-            TodayView().tag(0)
+            TodayView(onMemoTab: { selection = 3 }).tag(0)
                 .tabItem { Label("오늘", systemImage: "checklist") }
             CalendarView().tag(1)
                 .tabItem { Label("근무표", systemImage: "calendar") }
@@ -17,6 +17,7 @@ struct RootView: View {
             MemoView().tag(3)
                 .tabItem { Label("메모", systemImage: "note.text") }
         }
+        .tint(Color(hex: "#3182F6"))
         // Two separate tasks: requestAuthorization() suspends until the user answers the prompt,
         // and arming must NOT wait on that — add() schedules regardless of authorization.
         .task { await NotificationScheduler.requestAuthorization() }
@@ -30,6 +31,7 @@ struct RootView: View {
         .onAppear {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--tab-memo") { selection = 3 }
+            if ProcessInfo.processInfo.arguments.contains("--tab-calendar") { selection = 1 }
             #endif
         }
         .onOpenURL { url in

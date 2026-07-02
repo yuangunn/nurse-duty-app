@@ -82,6 +82,7 @@ fun AppRoot(vm: NurseViewModel) {
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var sheetDay by rememberSaveable { mutableStateOf<Int?>(null) }
     var composerOpen by rememberSaveable { mutableStateOf(false) }
+    val pillCheck = remember { PillCheckHolder() }
 
     // system back closes the topmost overlay instead of finishing the activity
     BackHandler(enabled = sheetDay != null || composerOpen || showSettings) {
@@ -100,7 +101,7 @@ fun AppRoot(vm: NurseViewModel) {
                     1 -> CalendarScreen(vm, onDay = { sheetDay = it })
                     2 -> DutyScreen(vm)
                     3 -> MemoScreen(vm, onCompose = { composerOpen = true })
-                    else -> PillCheckScreen()
+                    else -> PillCheckScreen(pillCheck)
                 }
             }
             BottomBar(tab) { tab = it }
@@ -143,7 +144,17 @@ private fun BottomBar(tab: Int, onTab: (Int) -> Unit) {
 // ponytail: WebView-wraps the existing PWA for UI unity now; native reimplement is the
 // long-term goal. Attribute search works offline; photo-OCR file upload needs a
 // WebChromeClient.onShowFileChooser — add when that path is wanted.
-private const val PILLCHECK_URL = "https://yuangunn.github.io/ward-pillcheck/"
+// ?embed=1: the PWA hides its install/open-in-browser banners for trusted embeds.
+private const val PILLCHECK_URL = "https://yuangunn.github.io/ward-pillcheck/?embed=1"
+private const val PILLCHECK_HOST = "yuangunn.github.io"
+
+/** Lives in AppRoot so the WebView (and the SPA's in-memory state) survives tab switches. */
+class PillCheckHolder {
+    var webView: WebView? = null
+    val loading = mutableStateOf(true)
+    val failed = mutableStateOf(false)
+    val canBack = mutableStateOf(false)
+}
 
 // The PWA sizes html/body/#root with height:100%/100dvh. In an embedded WebView the layout
 // viewport resolves those to 0 (blank page) though window.innerHeight is correct — so pin the
@@ -154,13 +165,13 @@ private const val PILLCHECK_HEIGHT_FIX =
         "f();window.addEventListener('resize',f)})()"
 
 @Composable
-fun PillCheckScreen() {
+fun PillCheckScreen(holder: PillCheckHolder) {
     val c = LocalNurse.current
-    var webView by remember { mutableStateOf<WebView?>(null) }
-    var loading by remember { mutableStateOf(true) }
-    var canBack by remember { mutableStateOf(false) }
+    val loading by holder.loading
+    val failed by holder.failed
+    val canBack by holder.canBack
 
-    BackHandler(enabled = canBack) { webView?.goBack() }
+    BackHandler(enabled = canBack) { holder.webView?.goBack() }
 
     Column(Modifier.fillMaxSize().background(c.bg)) {
         Row(
@@ -173,36 +184,69 @@ fun PillCheckScreen() {
             }
             Box(
                 Modifier.size(38.dp).clip(CircleShape).background(c.cardBg)
-                    .border(1.dp, c.cardBorder, CircleShape).clickable { webView?.reload() },
+                    .border(1.dp, c.cardBorder, CircleShape)
+                    .clickable { holder.failed.value = false; holder.webView?.reload() },
                 Alignment.Center,
             ) { Icon(Icons.Filled.Refresh, "새로고침", tint = c.sub, modifier = Modifier.size(18.dp)) }
         }
         Box(Modifier.fillMaxSize()) {
             AndroidView(
                 factory = { ctx ->
-                    WebView(ctx).apply {
-                        settings.javaScriptEnabled = true
-                        settings.domStorageEnabled = true
-                        settings.databaseEnabled = true
-                        webViewClient = object : WebViewClient() {
-                            override fun onPageStarted(v: WebView?, url: String?, favicon: android.graphics.Bitmap?) { loading = true }
-                            // reveal the SPA on first paint — onPageFinished waits for every subresource
-                            override fun onPageCommitVisible(v: WebView?, url: String?) {
-                                loading = false; v?.evaluateJavascript(PILLCHECK_HEIGHT_FIX, null)
+                    // reuse the surviving instance across tab switches (detach from the old parent first)
+                    holder.webView?.also { (it.parent as? android.view.ViewGroup)?.removeView(it) }
+                        ?: WebView(ctx).apply {
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            settings.databaseEnabled = true
+                            webViewClient = object : WebViewClient() {
+                                override fun shouldOverrideUrlLoading(v: WebView?, req: android.webkit.WebResourceRequest?): Boolean {
+                                    val url = req?.url ?: return false
+                                    if (url.host == PILLCHECK_HOST) return false
+                                    // Teams handover deep links, GitHub, tel/mailto → hand off to the OS
+                                    runCatching {
+                                        ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, url)
+                                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                                    }
+                                    return true
+                                }
+                                override fun onPageStarted(v: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                                    holder.loading.value = true; holder.failed.value = false
+                                }
+                                // reveal the SPA on first paint — onPageFinished waits for every subresource
+                                override fun onPageCommitVisible(v: WebView?, url: String?) {
+                                    holder.loading.value = false; v?.evaluateJavascript(PILLCHECK_HEIGHT_FIX, null)
+                                }
+                                override fun onPageFinished(v: WebView?, url: String?) {
+                                    holder.loading.value = false; holder.canBack.value = v?.canGoBack() == true
+                                    v?.evaluateJavascript(PILLCHECK_HEIGHT_FIX, null)
+                                }
+                                override fun onReceivedError(
+                                    v: WebView?, req: android.webkit.WebResourceRequest?, err: android.webkit.WebResourceError?,
+                                ) {
+                                    if (req?.isForMainFrame == true) { holder.loading.value = false; holder.failed.value = true }
+                                }
                             }
-                            override fun onPageFinished(v: WebView?, url: String?) {
-                                loading = false; canBack = v?.canGoBack() == true
-                                v?.evaluateJavascript(PILLCHECK_HEIGHT_FIX, null)
-                            }
+                            loadUrl(PILLCHECK_URL)
+                            holder.webView = this
                         }
-                        loadUrl(PILLCHECK_URL)
-                        webView = this
-                    }
                 },
                 modifier = Modifier.fillMaxSize(),
             )
             if (loading) Box(Modifier.fillMaxSize().background(c.bg), Alignment.Center) {
                 CircularProgressIndicator(color = c.tabSel)
+            }
+            if (failed) Column(
+                Modifier.fillMaxSize().background(c.bg).padding(32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+            ) {
+                Text("연결할 수 없어요", style = NurseType.cardTitle, color = c.text)
+                Text("네트워크 연결을 확인한 뒤 다시 시도해 주세요.", style = NurseType.caption, color = c.sub,
+                    modifier = Modifier.padding(top = 6.dp, bottom = 18.dp))
+                Box(
+                    Modifier.clip(RoundedCornerShape(14.dp)).background(Duty.brandGradient)
+                        .clickable { holder.failed.value = false; holder.webView?.reload() }
+                        .padding(horizontal = 26.dp, vertical = 13.dp),
+                ) { Text("다시 시도", style = NurseType.bodyStrong, color = Color.White) }
             }
         }
     }

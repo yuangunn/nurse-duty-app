@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- adaptive-icon background fallback (brand blue, day tone); the full-bleed
-         foreground icon is opaque so this only shows behind mask parallax. -->
-    <color name="ic_launcher_background">#3182F6</color>
-</resources>

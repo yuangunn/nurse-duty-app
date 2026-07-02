@@ -48,6 +48,20 @@ class AlarmScheduler(
         val armed = mutableSetOf<String>()
         schedule.forEach { p -> if (runCatching { scheduleOne(p) }.isSuccess) armed.add(p.id) }
         prefs.edit().putStringSet(KEY, armed).apply()
+
+        // Silent re-arm beacon: the self-chain dies if no user alarm fires inside the window
+        // (schedule entered weeks ahead, or a long off-stretch). One inexact wake just before the
+        // window edge re-plans without notifying, so the chain can never permanently stall.
+        runCatching {
+            val rearm = Intent(context, AlarmReceiver::class.java).putExtra("rearm", true)
+            val pi = PendingIntent.getBroadcast(
+                context, REARM_RC, rearm,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            val at = LocalDateTime.now().plusDays(13)
+                .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+        }
     }
 
     private fun scheduleOne(p: PlannedAlarm) {
@@ -80,5 +94,8 @@ class AlarmScheduler(
         if (pi != null) { am.cancel(pi); pi.cancel() }
     }
 
-    private companion object { const val KEY = "scheduled" }
+    private companion object {
+        const val KEY = "scheduled"
+        const val REARM_RC = -1   // fixed requestCode, distinct from id.hashCode() alarms
+    }
 }

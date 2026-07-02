@@ -30,14 +30,23 @@ class NurseViewModel(app: Application) : AndroidViewModel(app) {
     private val _weather = MutableStateFlow(WeatherUi(false, "서울", "—", "sun"))
     val weather: StateFlow<WeatherUi> = _weather.asStateFlow()
 
-    init {
+    private var weatherFetchedAt = 0L
+
+    init { refreshWeather() }
+
+    /** Re-fetches at most every 30 min; failures don't advance the clock so the next resume retries. */
+    fun refreshWeather() {
+        if (System.currentTimeMillis() - weatherFetchedAt < 30 * 60_000) return
         // Seoul default; geolocation ("현위치") is a later add. ponytail: no permission dance for v1.
         viewModelScope.launch(Dispatchers.IO) {
             runCatching {
-                val body = URL("https://api.open-meteo.com/v1/forecast?latitude=37.5665&longitude=126.9780&current=temperature_2m,weather_code").readText()
+                val conn = URL("https://api.open-meteo.com/v1/forecast?latitude=37.5665&longitude=126.9780&current=temperature_2m,weather_code")
+                    .openConnection().apply { connectTimeout = 5000; readTimeout = 5000 }
+                val body = conn.getInputStream().bufferedReader().use { it.readText() }
                 val cur = JSONObject(body).getJSONObject("current")
                 val temp = Math.round(cur.getDouble("temperature_2m")).toInt()
                 _weather.value = WeatherUi(true, "서울", "$temp°", weatherKind(cur.getInt("weather_code")))
+                weatherFetchedAt = System.currentTimeMillis()
             }
         }
     }
@@ -81,7 +90,10 @@ class NurseViewModel(app: Application) : AndroidViewModel(app) {
     fun export(uri: Uri, resolver: ContentResolver, onDone: (Boolean) -> Unit) = viewModelScope.launch {
         val ok = runCatching {
             val json = repo.exportBackup()
-            resolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
+            // "wt" truncates: some SAF providers keep the old tail on plain "w", corrupting the file.
+            // A null stream must report failure, not silently "succeed" having written nothing.
+            val out = resolver.openOutputStream(uri, "wt") ?: error("no output stream")
+            out.use { it.write(json.toByteArray()) }
         }.isSuccess
         onDone(ok)
     }

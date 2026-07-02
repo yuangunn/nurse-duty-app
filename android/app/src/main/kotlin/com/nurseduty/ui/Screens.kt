@@ -39,6 +39,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nurseduty.data.ChargeRules
 import com.nurseduty.data.ChecklistItemEntity
@@ -46,6 +47,7 @@ import com.nurseduty.data.DutyProfileEntity
 import com.nurseduty.data.QuickMemoEntity
 import com.nurseduty.domain.DayKey
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.YearMonth
 
 fun colorFromHex(hex: String): Color =
@@ -81,6 +83,15 @@ fun AppRoot(vm: NurseViewModel) {
     var sheetDay by rememberSaveable { mutableStateOf<Int?>(null) }
     var composerOpen by rememberSaveable { mutableStateOf(false) }
 
+    // system back closes the topmost overlay instead of finishing the activity
+    BackHandler(enabled = sheetDay != null || composerOpen || showSettings) {
+        when {
+            sheetDay != null -> sheetDay = null
+            composerOpen -> composerOpen = false
+            else -> showSettings = false
+        }
+    }
+
     Box(Modifier.fillMaxSize().background(c.bg)) {
         Column(Modifier.fillMaxSize()) {
             Box(Modifier.weight(1f)) {
@@ -112,7 +123,8 @@ private fun BottomBar(tab: Int, onTab: (Int) -> Unit) {
     )
     Row(
         Modifier.fillMaxWidth().background(c.tabBg).border(0.5.dp, c.tabBorder)
-            .padding(top = 9.dp, bottom = 20.dp),
+            .navigationBarsPadding()   // 3-button nav must not cover the tab labels (edge-to-edge)
+            .padding(top = 9.dp, bottom = 8.dp),
     ) {
         items.forEachIndexed { i, (label, on, off) ->
             val sel = tab == i
@@ -207,6 +219,7 @@ fun HomeScreen(vm: NurseViewModel, onGear: () -> Unit, onMemo: () -> Unit) {
     val alarms by vm.alarms.collectAsStateWithLifecycle()
     val memos by vm.memos.collectAsStateWithLifecycle()
     val weather by vm.weather.collectAsStateWithLifecycle()
+    LifecycleResumeEffect(Unit) { vm.refreshWeather(); onPauseOrDispose { } }
 
     val todayKey = DayKey.from(LocalDate.now())
     val a = assignments.firstOrNull { it.dayKey == todayKey }
@@ -223,9 +236,12 @@ fun HomeScreen(vm: NurseViewModel, onGear: () -> Unit, onMemo: () -> Unit) {
     val done = todayItems.count { checkedToday.contains(it.first) }
     val total = todayItems.size
 
-    // next alarm today
+    // next alarm: dayOffset-aware (night's 익일 06:00 sorts after 21:30) and not already past
+    val nowMin = LocalTime.now().let { it.hour * 60 + it.minute }
     val nextAlarm = profile?.let { p ->
-        alarms.filter { it.dutyProfileId == p.id && it.enabled }.minByOrNull { it.hour * 60 + it.minute }
+        alarms.filter { it.dutyProfileId == p.id && it.enabled }
+            .sortedBy { it.dayOffset * 1440 + it.hour * 60 + it.minute }
+            .firstOrNull { it.dayOffset * 1440 + it.hour * 60 + it.minute >= nowMin }
     }
     val pending = memos.filter { !it.isDone }
 
@@ -280,7 +296,10 @@ fun HomeScreen(vm: NurseViewModel, onGear: () -> Unit, onMemo: () -> Unit) {
                             Icon(Icons.Filled.NotificationsActive, null, tint = Color.White, modifier = Modifier.size(18.dp))
                             Text("다음 알람 · ${nextAlarm.label}", style = NurseType.bodyStrong, color = Color.White)
                             Spacer(Modifier.weight(1f))
-                            Text("%02d:%02d".format(nextAlarm.hour, nextAlarm.minute), style = NurseType.bodyStrong.copy(fontWeight = FontWeight.W800), color = Color.White)
+                            Text(
+                                (if (nextAlarm.dayOffset > 0) "익일 " else "") + "%02d:%02d".format(nextAlarm.hour, nextAlarm.minute),
+                                style = NurseType.bodyStrong.copy(fontWeight = FontWeight.W800), color = Color.White,
+                            )
                         }
                     }
                 }
@@ -416,11 +435,15 @@ fun CalendarScreen(vm: NurseViewModel, onDay: (Int) -> Unit) {
                                         else -> if (c.dark) Color(0xFF1B160E) else Color(0xFFF3EEE4)
                                     }
                                     Box(Modifier.fillMaxSize().clip(RoundedCornerShape(11.dp)).background(cellBg)
-                                        .then(if (isToday && p != null) Modifier.border(1.5.dp, Color.White, RoundedCornerShape(11.dp)) else Modifier)
+                                        .then(when {
+                                            isToday && p != null -> Modifier.border(1.5.dp, Color.White, RoundedCornerShape(11.dp))
+                                            isToday -> Modifier.border(1.5.dp, c.tabSel, RoundedCornerShape(11.dp))   // unassigned today still stands out
+                                            else -> Modifier
+                                        })
                                         .clickable { onDay(dk) }) {
                                         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                                             Text("${day.dayOfMonth}", style = NurseType.label,
-                                                color = if (p != null) (if (isToday) Color.White else c.text) else c.faint)
+                                                color = if (p != null) (if (isToday) Color.White else c.text) else if (isToday) c.tabSel else c.faint)
                                             if (p != null) Text(Duty.short(p.kind), style = NurseType.micro.copy(fontWeight = FontWeight.W800),
                                                 color = if (isToday) Color.White.copy(0.92f) else col!!)
                                         }
@@ -435,13 +458,14 @@ fun CalendarScreen(vm: NurseViewModel, onDay: (Int) -> Unit) {
             }
         }
         item {
-            // stats
-            val counts = Duty.KINDS.associateWith { k -> assignments.count { byId[it.dutyProfileId]?.kind == k } }
+            // stats for the month being viewed (dayKey / 100 == yyyymm)
+            val inMonth = assignments.filter { it.dayKey / 100 == monthKey }
+            val counts = Duty.KINDS.associateWith { k -> inMonth.count { byId[it.dutyProfileId]?.kind == k } }
             val total = counts.values.sum()
-            val chargeDays = assignments.count { asn -> asn.charge && byId[asn.dutyProfileId]?.let { ChargeRules.chargeable(it.kind) } == true }
+            val chargeDays = inMonth.count { asn -> asn.charge && byId[asn.dutyProfileId]?.let { ChargeRules.chargeable(it.kind) } == true }
             SoftCard(Modifier.padding(16.dp, 14.dp, 16.dp, 24.dp), pad = 18.dp) {
                 Row(Modifier.fillMaxWidth().padding(bottom = 14.dp), verticalAlignment = Alignment.Bottom) {
-                    Text("이번 달 근무", style = NurseType.cardTitle, color = c.text)
+                    Text("${month.monthValue}월 근무", style = NurseType.cardTitle, color = c.text)
                     Spacer(Modifier.weight(1f))
                     Text("$total", style = NurseType.statBig, color = c.text)
                     Text("일", style = NurseType.caption.copy(fontWeight = FontWeight.W700), color = c.sub)
@@ -582,7 +606,7 @@ fun AssignSheet(vm: NurseViewModel, day: Int, onClose: () -> Unit, onDay: (Int) 
 
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize().background(Color(0x80140F08)).clickable { onClose() })
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().clip(RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp)).background(c.sheetBg).padding(20.dp, 12.dp, 20.dp, 26.dp)) {
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().clip(RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp)).background(c.sheetBg).navigationBarsPadding().padding(20.dp, 12.dp, 20.dp, 26.dp)) {
             Box(Modifier.align(Alignment.CenterHorizontally).padding(bottom = 14.dp).width(40.dp).height(5.dp).clip(CircleShape).background(c.grab))
             Text(dayLabel(day), style = NurseType.caption, color = c.sub)
             Text("근무를 선택하세요", style = NurseType.sheetTitle, color = c.text, modifier = Modifier.padding(top = 2.dp, bottom = 16.dp))
@@ -647,7 +671,7 @@ fun ComposerSheet(vm: NurseViewModel, onClose: () -> Unit) {
     var text by remember { mutableStateOf("") }
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize().background(Color(0x80140F08)).clickable { onClose() })
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().clip(RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp)).background(c.sheetBg).padding(20.dp, 12.dp, 20.dp, 26.dp)) {
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().clip(RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp)).background(c.sheetBg).navigationBarsPadding().imePadding().padding(20.dp, 12.dp, 20.dp, 26.dp)) {
             Box(Modifier.align(Alignment.CenterHorizontally).padding(bottom = 14.dp).width(40.dp).height(5.dp).clip(CircleShape).background(c.grab))
             Text("빠른 메모 추가", style = NurseType.sheetTitle, color = c.text, modifier = Modifier.padding(bottom = 16.dp))
             Text("병상", style = NurseType.label, color = c.sub, modifier = Modifier.padding(bottom = 7.dp))

@@ -189,6 +189,7 @@ class Repository(
 
     suspend fun importBackup(jsonStr: String): Boolean {
         val b = runCatching { Backup.decode(jsonStr) }.getOrNull() ?: return false
+        if (!Backup.valid(b)) return false
         // Atomic: a process kill / I/O error / constraint-violating row rolls back instead of
         // leaving the store wiped with a partial restore (no data loss).
         val ok = runCatching {

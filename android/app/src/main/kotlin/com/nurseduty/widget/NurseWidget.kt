@@ -7,6 +7,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.action.actionStartActivity
+import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.cornerRadius
@@ -43,7 +45,10 @@ private fun WidgetContent(snap: TodayWidget) {
     val ink = ColorProvider(Color(0xFF241D13))
     val gray = ColorProvider(Color(0xFF8A7D6A))
     val duty = snap.colorHex?.let { colorFromHex(it) } ?: Color(0xFF94A3B8)
-    Column(GlanceModifier.fillMaxSize().background(Color(0xFFFFFDF9)).padding(14.dp)) {
+    Column(
+        GlanceModifier.fillMaxSize().background(Color(0xFFFFFDF9))
+            .clickable(actionStartActivity<com.nurseduty.MainActivity>()).padding(14.dp),
+    ) {
         Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Box(GlanceModifier.size(11.dp).cornerRadius(4.dp).background(duty)) {}
             Spacer(GlanceModifier.width(7.dp))

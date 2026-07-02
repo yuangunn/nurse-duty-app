@@ -23,8 +23,9 @@ class NurseApp : Application() {
         val scheduler = AlarmScheduler(this, getSharedPreferences("sched", MODE_PRIVATE))
         repository = Repository(db, scheduler, this)
         scope.launch {
-            repository.seedPresetsIfEmpty()
-            repository.rescheduleNow()
+            // runCatching: a corrupt row must never turn app start into a crash loop
+            runCatching { repository.seedPresetsIfEmpty() }
+            runCatching { repository.rescheduleNow() }
         }
     }
 }

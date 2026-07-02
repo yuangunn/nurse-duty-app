@@ -8,7 +8,7 @@ import com.nurseduty.domain.WearCommand
 import com.nurseduty.domain.WearState
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.WearableListenerService
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 
 /** Phone side of the watch sync: push today-state to the watch (Data Layer, latest-wins). */
@@ -30,6 +30,8 @@ class PhoneWearService : WearableListenerService() {
         if (event.path != "/command") return
         val cmd = runCatching { WearCommand.decode(String(event.data)) }.getOrNull() ?: return
         val app = applicationContext as NurseApp
-        app.scope.launch { app.repository.applyWearCommand(cmd) }
+        // Synchronous on purpose: the service (and its wakeful process) may die right after this
+        // returns, so a fire-and-forget launch could drop the watch's command. Already off-main.
+        runBlocking { runCatching { app.repository.applyWearCommand(cmd) } }
     }
 }

@@ -5,6 +5,7 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nurseduty.ui.AppRoot
@@ -17,6 +18,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()   // targetSdk 35 forces it on Android 15; opting in keeps older versions consistent
         if (Build.VERSION.SDK_INT >= 33) notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         setContent {
             NurseTheme {

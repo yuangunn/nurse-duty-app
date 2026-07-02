@@ -22,13 +22,23 @@ struct WidgetHomeView: View {
     let snapshot: WidgetSnapshot
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Circle().fill(dutyColor(snapshot.dutyColorHex)).frame(width: 10, height: 10)
+            HStack(spacing: 7) {
+                if let kind = snapshot.dutyKind, kind != "Custom" {
+                    Text(Duty.letter(kind)).font(.system(size: 10, weight: .heavy)).foregroundStyle(.white)
+                        .frame(width: 18, height: 18)
+                        .background(Duty.gradient(kind), in: RoundedRectangle(cornerRadius: 6))
+                } else {
+                    Circle().fill(dutyColor(snapshot.dutyColorHex)).frame(width: 10, height: 10)
+                }
                 Text(snapshot.dutyName ?? "근무 없음").font(.headline).lineLimit(1)
+                    .foregroundStyle(dutyColor(snapshot.dutyColorHex))
+                if snapshot.charge == true {
+                    Image(systemName: "crown.fill").font(.system(size: 9)).foregroundStyle(Duty.gold)
+                }
                 Spacer()
                 if snapshot.pendingMemoCount > 0 {
                     Label("\(snapshot.pendingMemoCount)", systemImage: "note.text")
-                        .font(.caption2.bold()).foregroundStyle(.orange)
+                        .font(.caption2.bold()).foregroundStyle(Duty.gold)
                 }
             }
             if snapshot.checklistTotal > 0 {

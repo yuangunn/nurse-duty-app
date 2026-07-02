@@ -67,39 +67,60 @@ struct WatchRootView: View {
 struct WatchTodayView: View {
     @ObservedObject var model: WatchModel
     var body: some View {
+        let st = model.state
+        let kind = st.dutyKind ?? "None"
         NavigationStack {
-            List {
-                if let duty = model.state.dutyName {
-                    Section {
-                        HStack(spacing: 6) {
-                            Circle().fill(Color(hex: model.state.dutyColorHex ?? "#9AA0A6")).frame(width: 10, height: 10)
-                            Text(duty).font(.headline)
-                        }
-                        if let label = model.state.nextAlarmLabel, let date = model.state.nextAlarmDate {
-                            HStack(spacing: 4) {
-                                Image(systemName: "bell.fill")
-                                Text(label)
-                                Spacer()
-                                Text(date, format: .dateTime.hour().minute())
-                            }.font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                    if !model.state.checklist.isEmpty {
-                        Section("체크리스트") {
-                            ForEach(model.state.checklist) { item in
-                                Button { model.toggle(item.id) } label: {
-                                    HStack {
-                                        Image(systemName: item.checked ? "checkmark.circle.fill" : "circle")
-                                            .foregroundStyle(item.checked ? .green : .secondary)
-                                        Text(item.text).strikethrough(item.checked)
-                                    }
-                                }
+            ScrollView {
+                VStack(spacing: 8) {
+                    // 1b duty-gradient header (parity with the Wear OS card)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(st.dutyName.map { "\($0) · \(Duty.ko(kind))" } ?? "오늘 근무 없음")
+                            .font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                        if st.charge == true {
+                            HStack(spacing: 3) {
+                                Image(systemName: "crown.fill").font(.system(size: 9))
+                                    .foregroundStyle(Color(hex: "#FFE49B"))
+                                Text("차지 · 팀 리더").font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(Color(hex: "#FFE49B"))
                             }
                         }
+                        if kind != "None", let t = st.dutyTimeText, !t.isEmpty {
+                            Text(t).font(.system(size: 11)).foregroundStyle(.white.opacity(0.9))
+                        }
+                        HStack(spacing: 8) {
+                            let done = st.checklist.filter(\.checked).count
+                            if !st.checklist.isEmpty {
+                                Text("\(done)/\(st.checklist.count) 완료")
+                                    .font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
+                            }
+                            if let label = st.nextAlarmLabel, let date = st.nextAlarmDate {
+                                Text("⏰ \(label) \(date, format: .dateTime.hour().minute())")
+                                    .font(.system(size: 10)).foregroundStyle(.white.opacity(0.9))
+                            }
+                        }
+                        .padding(.top, 2)
                     }
-                } else {
-                    Text("오늘 근무 없음").foregroundStyle(.secondary)
+                    .padding(.horizontal, 14).padding(.vertical, 11)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Duty.gradient(kind), in: RoundedRectangle(cornerRadius: 16))
+
+                    ForEach(st.checklist) { item in
+                        Button { model.toggle(item.id) } label: {
+                            HStack {
+                                Image(systemName: item.checked ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(item.checked ? Duty.success : .secondary)
+                                Text(item.text).font(.system(size: 13))
+                                    .strikethrough(item.checked)
+                                    .foregroundStyle(item.checked ? .secondary : .primary)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 12).padding(.vertical, 9)
+                            .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 13))
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
+                .padding(.horizontal, 4)
             }
             .navigationTitle("오늘")
         }

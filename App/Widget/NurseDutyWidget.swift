@@ -34,6 +34,12 @@ struct Provider: TimelineProvider {
     }
 }
 
+/// 1b warm card — light #FFFDF9 / dark #211B12 (lock-screen accessories ignore this).
+struct WarmWidgetBackground: View {
+    @Environment(\.colorScheme) private var scheme
+    var body: some View { scheme == .dark ? Color(hex: "#211B12") : Color(hex: "#FFFDF9") }
+}
+
 struct NurseDutyEntryView: View {
     @Environment(\.widgetFamily) private var family
     let entry: NurseDutyEntry
@@ -52,7 +58,7 @@ struct NurseDutyWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "NurseDutyWidget", provider: Provider()) { entry in
             NurseDutyEntryView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
+                .containerBackground(for: .widget) { WarmWidgetBackground() }
                 .widgetURL(URL(string: "nurseduty://memo"))
         }
         .configurationDisplayName("오늘 근무")

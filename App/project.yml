@@ -41,6 +41,7 @@ targets:
     sources:
       - Widget
       - path: Sources/WidgetUI.swift   # shared view code (also compiled into the app)
+      - path: Sources/DutyStyle.swift  # 1b tokens (duty gradients / warm palette)
     dependencies:
       - package: NurseDutyModel
     info:
@@ -64,6 +65,7 @@ targets:
     sources:
       - WatchApp
       - path: Sources/WidgetUI.swift   # shared Color(hex:) + accessory views
+      - path: Sources/DutyStyle.swift  # 1b tokens (duty gradients / warm palette)
     dependencies:
       - package: NurseDutyModel
     info:

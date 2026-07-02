@@ -81,22 +81,32 @@ struct SettingsView: View {
     }
 
     private func backupData() -> Data {
-        (try? JSONEncoder().encode(Backup.export(from: ctx))) ?? Data()
+        // v2 = Android-compatible flat format; a DENO backup now restores on either platform
+        (try? JSONEncoder().encode(BackupV2.export(from: ctx))) ?? Data()
     }
 
     private func handleImport(_ result: Result<URL, Error>) {
         guard case .success(let url) = result else { return }
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        guard let data = try? Data(contentsOf: url),
-              let backup = try? JSONDecoder().decode(Backup.self, from: data) else {
+        guard let data = try? Data(contentsOf: url) else {
             alert = "불러오기 실패: 파일을 읽을 수 없습니다."
             return
         }
-        Backup.restore(backup, into: ctx)
-        try? ctx.save()
-        rearm(ctx)   // re-arm alarms for the restored assignments
-        alert = "복원 완료 (근무 \(backup.assignments.count) · 메모 \(backup.memos.count))"
+        if let v2 = try? JSONDecoder().decode(BackupV2.self, from: data) {   // Android/DENO 공통 포맷
+            guard BackupV2.valid(v2) else { alert = "불러오기 실패: 백업 파일이 아니거나 손상됐습니다."; return }
+            BackupV2.restore(v2, into: ctx)
+            try? ctx.save()
+            rearm(ctx)
+            alert = "복원 완료 (근무 \((v2.assignments ?? []).count) · 메모 \((v2.memos ?? []).count))"
+        } else if let legacy = try? JSONDecoder().decode(Backup.self, from: data) {   // 구 iOS 포맷
+            Backup.restore(legacy, into: ctx)
+            try? ctx.save()
+            rearm(ctx)
+            alert = "복원 완료 (근무 \(legacy.assignments.count) · 메모 \(legacy.memos.count))"
+        } else {
+            alert = "불러오기 실패: 백업 파일이 아니거나 손상됐습니다."
+        }
     }
 
     private struct CountRow { let name: String; let color: String; let count: Int }

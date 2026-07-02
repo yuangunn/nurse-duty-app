@@ -20,6 +20,7 @@ targets:
     info:
       path: Info-App.plist
       properties:
+        CFBundleDisplayName: 데노
         UILaunchScreen: {}
         CFBundleURLTypes:
           - CFBundleURLName: com.yuangunn.nurseduty
@@ -45,7 +46,7 @@ targets:
     info:
       path: Info-Widget.plist
       properties:
-        CFBundleDisplayName: NurseDuty
+        CFBundleDisplayName: 데노
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
@@ -70,7 +71,7 @@ targets:
       properties:
         WKApplication: true                                       # single-target watch app
         WKCompanionAppBundleIdentifier: com.yuangunn.nurseduty.app
-        CFBundleDisplayName: NurseDuty
+        CFBundleDisplayName: 데노
         UIDeviceFamily: [4]                                       # Apple Watch (explicit plist doesn't auto-inject)
     settings:
       base:

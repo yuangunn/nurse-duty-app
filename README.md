@@ -1,4 +1,6 @@
-# NurseDuty
+# 데노 (DENO)
+
+> **D**ay · **E**vening · **N**ight · **O**ff — 근무표에 쓰는 그 네 글자.
 
 간호사 근무 보조 앱 (Android + iOS, standalone·100% 로컬·계정 없음). MyDuty식 월간 근무표에
 하루 한 근무를 채우면 그 듀티의 알람·체크리스트가 따라온다. 라운딩 중 빠른 메모(병상 태그)도.

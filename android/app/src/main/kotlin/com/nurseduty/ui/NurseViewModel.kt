@@ -30,6 +30,14 @@ class NurseViewModel(app: Application) : AndroidViewModel(app) {
     private val _weather = MutableStateFlow(WeatherUi(false, "서울", "—", "sun"))
     val weather: StateFlow<WeatherUi> = _weather.asStateFlow()
 
+    private val userPrefs = app.getSharedPreferences("user", android.content.Context.MODE_PRIVATE)
+    private val _userName = MutableStateFlow(userPrefs.getString("name", "") ?: "")
+    val userName: StateFlow<String> = _userName.asStateFlow()
+    fun setUserName(name: String) {
+        _userName.value = name
+        userPrefs.edit().putString("name", name).apply()
+    }
+
     private var weatherFetchedAt = 0L
 
     init { refreshWeather() }
@@ -82,6 +90,14 @@ class NurseViewModel(app: Application) : AndroidViewModel(app) {
     fun archiveChecklistItem(i: ChecklistItemEntity) = go { repo.archiveChecklistItem(i) }
     fun newChecklistItem(profileId: String, text: String, order: Int) =
         ChecklistItemEntity(UUID.randomUUID().toString(), profileId, text, false, order)
+
+    fun applyDutyEdit(
+        profile: DutyProfileEntity, timeText: String, alarms: List<AlarmEntity>,
+        removedAlarmIds: Set<String>, addedChecklist: List<String>, archivedChecklistIds: Set<String>,
+    ) = go { repo.applyDutyEdit(profile, timeText, alarms, removedAlarmIds, addedChecklist, archivedChecklistIds) }
+
+    fun assignPattern(start: java.time.LocalDate, end: java.time.LocalDate, patternIds: List<String>, overwrite: Boolean) =
+        go { repo.assignPattern(start, end, patternIds, overwrite) }
 
     fun addMemo(bed: String, text: String) = go { repo.addMemo(bed, text) }
     fun setMemoDone(m: QuickMemoEntity, done: Boolean) = go { repo.setMemoDone(m, done) }

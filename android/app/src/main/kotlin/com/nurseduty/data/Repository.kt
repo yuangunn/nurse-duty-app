@@ -8,6 +8,7 @@ import com.nurseduty.domain.AlarmPlanner
 import com.nurseduty.domain.AlarmSpec
 import com.nurseduty.domain.DayKey
 import com.nurseduty.domain.DutyProfile
+import com.nurseduty.domain.RotationPlanner
 import com.nurseduty.domain.ShiftAssignment
 import com.nurseduty.domain.WearCommand
 import com.nurseduty.domain.WearState
@@ -84,6 +85,39 @@ class Repository(
     suspend fun saveChecklistItem(i: ChecklistItemEntity) { dao.upsertChecklistItem(i); refreshWidget() }
     suspend fun archiveChecklistItem(i: ChecklistItemEntity) { dao.upsertChecklistItem(i.copy(isArchived = true)); refreshWidget() }
     suspend fun newChecklistId() = UUID.randomUUID().toString()
+
+    /** Persists the whole duty-edit form in one shot, then re-arms alarms once. */
+    suspend fun applyDutyEdit(
+        profile: DutyProfileEntity,
+        timeText: String,
+        alarms: List<AlarmEntity>,
+        removedAlarmIds: Set<String>,
+        addedChecklist: List<String>,
+        archivedChecklistIds: Set<String>,
+    ) {
+        db.withTransaction {
+            dao.upsertProfile(profile.copy(timeText = timeText))
+            val byId = dao.allAlarmsOnce().associateBy { it.id }
+            removedAlarmIds.forEach { id -> byId[id]?.let { dao.deleteAlarm(it) } }
+            alarms.forEachIndexed { i, a -> dao.upsertAlarm(a.copy(sortOrder = i)) }
+            val items = dao.allChecklistOnce()
+            items.filter { it.id in archivedChecklistIds }.forEach { dao.upsertChecklistItem(it.copy(isArchived = true)) }
+            val base = (items.filter { it.dutyProfileId == profile.id }.maxOfOrNull { it.sortOrder } ?: -1) + 1
+            addedChecklist.forEachIndexed { i, text ->
+                dao.upsertChecklistItem(ChecklistItemEntity(UUID.randomUUID().toString(), profile.id, text, false, base + i))
+            }
+        }
+        rescheduleNow()
+    }
+
+    /** Rotation bulk-fill: applies a repeating pattern of profile ids over start..end (inclusive). */
+    suspend fun assignPattern(start: LocalDate, end: LocalDate, patternProfileIds: List<String>, overwrite: Boolean) {
+        val existing = dao.allAssignmentsOnce().map { it.dayKey }.toSet()
+        val plan = RotationPlanner.plan(start, end, patternProfileIds, existing, overwrite)
+        if (plan.isEmpty()) return
+        db.withTransaction { plan.forEach { (dk, pid) -> dao.upsertAssignment(ShiftAssignmentEntity(dk, pid)) } }
+        rescheduleNow()
+    }
 
     // ---- memos ----
     suspend fun addMemo(bedTag: String, text: String) {

@@ -53,7 +53,7 @@ import java.time.YearMonth
 fun colorFromHex(hex: String): Color =
     runCatching { Color(("FF" + hex.removePrefix("#")).toLong(16)) }.getOrElse { Color.Gray }
 
-private fun dutyDisplay(p: DutyProfileEntity, charge: Boolean = false): String =
+internal fun dutyDisplay(p: DutyProfileEntity, charge: Boolean = false): String =
     if (p.kind == "Custom") p.name
     else "${p.name} · ${Duty.ko(p.kind)}${if (charge && ChargeRules.chargeable(p.kind)) "차지" else ""}"
 
@@ -69,7 +69,7 @@ private fun SoftCard(modifier: Modifier = Modifier, pad: Dp = 16.dp, content: @C
 }
 
 @Composable
-private fun Avatar(kind: String, size: Dp = 46.dp, radius: Dp = 14.dp) {
+internal fun Avatar(kind: String, size: Dp = 46.dp, radius: Dp = 14.dp) {
     Box(Modifier.size(size).clip(RoundedCornerShape(radius)).background(Duty.gradient(kind)), Alignment.Center) {
         Text(Duty.letter(kind), style = NurseType.rowTitle.copy(fontWeight = FontWeight.W800), color = Color.White)
     }
@@ -82,13 +82,17 @@ fun AppRoot(vm: NurseViewModel) {
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var sheetDay by rememberSaveable { mutableStateOf<Int?>(null) }
     var composerOpen by rememberSaveable { mutableStateOf(false) }
+    var editProfileId by rememberSaveable { mutableStateOf<String?>(null) }
+    var rotateMonth by rememberSaveable { mutableStateOf<Int?>(null) }
     val pillCheck = remember { PillCheckHolder() }
 
     // system back closes the topmost overlay instead of finishing the activity
-    BackHandler(enabled = sheetDay != null || composerOpen || showSettings) {
+    BackHandler(enabled = sheetDay != null || composerOpen || showSettings || editProfileId != null || rotateMonth != null) {
         when {
             sheetDay != null -> sheetDay = null
             composerOpen -> composerOpen = false
+            editProfileId != null -> editProfileId = null
+            rotateMonth != null -> rotateMonth = null
             else -> showSettings = false
         }
     }
@@ -98,8 +102,8 @@ fun AppRoot(vm: NurseViewModel) {
             Box(Modifier.weight(1f)) {
                 when (tab) {
                     0 -> HomeScreen(vm, onGear = { showSettings = true }, onMemo = { tab = 3 })
-                    1 -> CalendarScreen(vm, onDay = { sheetDay = it })
-                    2 -> DutyScreen(vm)
+                    1 -> CalendarScreen(vm, onDay = { sheetDay = it }, onRotate = { rotateMonth = it })
+                    2 -> DutyScreen(vm, onEdit = { editProfileId = it })
                     3 -> MemoScreen(vm, onCompose = { composerOpen = true })
                     else -> PillCheckScreen(pillCheck)
                 }
@@ -108,6 +112,8 @@ fun AppRoot(vm: NurseViewModel) {
         }
         if (sheetDay != null) AssignSheet(vm, sheetDay!!, onClose = { sheetDay = null }, onDay = { sheetDay = it })
         if (composerOpen) ComposerSheet(vm, onClose = { composerOpen = false })
+        if (editProfileId != null) DutyEditSheet(vm, editProfileId!!, onClose = { editProfileId = null })
+        if (rotateMonth != null) RotationSheet(vm, rotateMonth!!, onClose = { rotateMonth = null })
         if (showSettings) SettingsScreen(vm, onBack = { showSettings = false })
     }
 }
@@ -263,6 +269,7 @@ fun HomeScreen(vm: NurseViewModel, onGear: () -> Unit, onMemo: () -> Unit) {
     val alarms by vm.alarms.collectAsStateWithLifecycle()
     val memos by vm.memos.collectAsStateWithLifecycle()
     val weather by vm.weather.collectAsStateWithLifecycle()
+    val userName by vm.userName.collectAsStateWithLifecycle()
     LifecycleResumeEffect(Unit) { vm.refreshWeather(); onPauseOrDispose { } }
 
     val todayKey = DayKey.from(LocalDate.now())
@@ -311,7 +318,10 @@ fun HomeScreen(vm: NurseViewModel, onGear: () -> Unit, onMemo: () -> Unit) {
                             Icon(Icons.Filled.Settings, "설정", tint = Color.White, modifier = Modifier.size(17.dp))
                         }
                     }
-                    Text("지현님, ${sky.greeting}", style = NurseType.greeting, color = Color.White, modifier = Modifier.padding(top = 8.dp))
+                    Text(
+                        if (userName.isBlank()) sky.greeting else "${userName}님, ${sky.greeting}",
+                        style = NurseType.greeting, color = Color.White, modifier = Modifier.padding(top = 8.dp),
+                    )
                     if (charge) {
                         Row(Modifier.padding(top = 9.dp).clip(CircleShape).background(Color.White.copy(0.2f))
                             .border(1.dp, Color.White.copy(0.36f), CircleShape).padding(horizontal = 11.dp, vertical = 4.dp),
@@ -432,7 +442,7 @@ private fun ProgressRing(done: Int, total: Int, hole: Color) {
 
 // ==================== CALENDAR ====================
 @Composable
-fun CalendarScreen(vm: NurseViewModel, onDay: (Int) -> Unit) {
+fun CalendarScreen(vm: NurseViewModel, onDay: (Int) -> Unit, onRotate: (Int) -> Unit) {
     val c = LocalNurse.current
     val profiles by vm.profiles.collectAsStateWithLifecycle()
     val assignments by vm.assignments.collectAsStateWithLifecycle()
@@ -447,6 +457,10 @@ fun CalendarScreen(vm: NurseViewModel, onDay: (Int) -> Unit) {
             Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 54.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("근무표", style = NurseType.h1, color = c.text)
                 Spacer(Modifier.weight(1f))
+                Box(Modifier.padding(end = 10.dp).size(34.dp).clip(CircleShape).background(c.cardBg)
+                    .border(1.dp, c.cardBorder, CircleShape).clickable { onRotate(monthKey) }, Alignment.Center) {
+                    Icon(Icons.Filled.Repeat, "로테이션 일괄 입력", tint = c.sub, modifier = Modifier.size(16.dp))
+                }
                 Icon(Icons.Filled.ChevronLeft, "이전", tint = c.sub, modifier = Modifier.size(22.dp).clickable { monthKey = month.minusMonths(1).run { year * 100 + monthValue } })
                 Text("${month.year}. ${month.monthValue}", style = NurseType.rowTitle, color = c.text, modifier = Modifier.padding(horizontal = 12.dp))
                 Icon(Icons.Filled.ChevronRight, "다음", tint = c.sub, modifier = Modifier.size(22.dp).clickable { monthKey = month.plusMonths(1).run { year * 100 + monthValue } })
@@ -543,7 +557,7 @@ fun CalendarScreen(vm: NurseViewModel, onDay: (Int) -> Unit) {
 
 // ==================== DUTY ====================
 @Composable
-fun DutyScreen(vm: NurseViewModel) {
+fun DutyScreen(vm: NurseViewModel, onEdit: (String) -> Unit) {
     val c = LocalNurse.current
     val profiles by vm.profiles.collectAsStateWithLifecycle()
     val alarms by vm.alarms.collectAsStateWithLifecycle()
@@ -552,13 +566,16 @@ fun DutyScreen(vm: NurseViewModel) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
             Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 16.dp, top = 54.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("듀티", style = NurseType.h1, color = c.text)
+                Column {
+                    Text("듀티", style = NurseType.h1, color = c.text)
+                    Text("카드를 눌러 시간·알람·체크리스트를 편집하세요", style = NurseType.caption, color = c.sub)
+                }
                 Spacer(Modifier.weight(1f))
             }
         }
         items(profiles.filter { !it.isArchived }, key = { it.id }) { p ->
             Row(Modifier.padding(16.dp, 11.dp, 16.dp, 0.dp).fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(c.cardBg)
-                .border(1.dp, c.cardBorder, RoundedCornerShape(18.dp)).padding(15.dp),
+                .border(1.dp, c.cardBorder, RoundedCornerShape(18.dp)).clickable { onEdit(p.id) }.padding(15.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(13.dp)) {
                 Avatar(p.kind)
                 Column(Modifier.weight(1f)) {
@@ -567,6 +584,7 @@ fun DutyScreen(vm: NurseViewModel) {
                 }
                 Chip("알람 ${alarms.count { it.dutyProfileId == p.id }}")
                 Chip("체크 ${items.count { it.dutyProfileId == p.id && !it.isArchived }}")
+                Icon(Icons.Filled.ChevronRight, "편집", tint = c.faint, modifier = Modifier.size(17.dp))
             }
         }
         item {
@@ -701,7 +719,7 @@ fun AssignSheet(vm: NurseViewModel, day: Int, onClose: () -> Unit, onDay: (Int) 
 }
 
 @Composable
-private fun MiniSwitch(on: Boolean) {
+internal fun MiniSwitch(on: Boolean) {
     Box(Modifier.width(46.dp).height(28.dp).clip(CircleShape).background(if (on) Duty.Gold else Color(0xFFCBD5E1))) {
         Box(Modifier.padding(3.dp).offset(x = if (on) 18.dp else 0.dp).size(22.dp).clip(CircleShape).background(Color.White))
     }
@@ -734,7 +752,7 @@ fun ComposerSheet(vm: NurseViewModel, onClose: () -> Unit) {
 }
 
 @Composable
-private fun SheetField(value: String, onValue: (String) -> Unit, placeholder: String, ko: KeyboardOptions = KeyboardOptions.Default) {
+internal fun SheetField(value: String, onValue: (String) -> Unit, placeholder: String, ko: KeyboardOptions = KeyboardOptions.Default) {
     val c = LocalNurse.current
     Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).background(c.inputBg).border(1.5.dp, c.inputBorder, RoundedCornerShape(13.dp)).padding(15.dp, 13.dp)) {
         BasicTextFieldStyled(value, onValue, placeholder, ko)
@@ -742,7 +760,7 @@ private fun SheetField(value: String, onValue: (String) -> Unit, placeholder: St
 }
 
 @Composable
-private fun BasicTextFieldStyled(value: String, onValue: (String) -> Unit, placeholder: String, ko: KeyboardOptions) {
+internal fun BasicTextFieldStyled(value: String, onValue: (String) -> Unit, placeholder: String, ko: KeyboardOptions) {
     val c = LocalNurse.current
     androidx.compose.foundation.text.BasicTextField(
         value = value, onValueChange = onValue, singleLine = true, keyboardOptions = ko,
@@ -779,6 +797,14 @@ fun SettingsScreen(vm: NurseViewModel, onBack: () -> Unit) {
                 Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 20.dp, top = 52.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.ChevronLeft, "뒤로", tint = c.text, modifier = Modifier.size(28.dp).clickable { onBack() })
                     Text("설정", style = NurseType.h1, color = c.text)
+                }
+            }
+            item { Text("프로필", style = NurseType.label, color = c.sub, modifier = Modifier.padding(20.dp, 20.dp, 20.dp, 8.dp)) }
+            item {
+                val userName by vm.userName.collectAsStateWithLifecycle()
+                SoftCard(Modifier.padding(horizontal = 16.dp), pad = 14.dp) {
+                    Text("이름", style = NurseType.label, color = c.sub, modifier = Modifier.padding(bottom = 7.dp))
+                    SheetField(userName, { vm.setUserName(it.take(12)) }, "예: 지현 (홈 인사말에 표시)")
                 }
             }
             item { Text("이번 달", style = NurseType.label, color = c.sub, modifier = Modifier.padding(20.dp, 20.dp, 20.dp, 8.dp)) }
@@ -821,7 +847,7 @@ private fun todayDate(): String {
     val d = LocalDate.now(); val dow = listOf("월", "화", "수", "목", "금", "토", "일")[d.dayOfWeek.value - 1]
     return "${d.monthValue}월 ${d.dayOfMonth}일 ($dow)"
 }
-private fun dayLabel(dayKey: Int): String { val d = DayKey.toLocalDate(dayKey); return "${d.monthValue}월 ${d.dayOfMonth}일" }
+internal fun dayLabel(dayKey: Int): String { val d = DayKey.toLocalDate(dayKey); return "${d.monthValue}월 ${d.dayOfMonth}일" }
 private fun nextDay(dayKey: Int): Int = DayKey.from(DayKey.toLocalDate(dayKey).plusDays(1))
 private fun progressNote(done: Int, total: Int): String {
     val rem = total - done

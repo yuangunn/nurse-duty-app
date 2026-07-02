@@ -52,15 +52,24 @@ class AlarmScheduler(
         // Silent re-arm beacon: the self-chain dies if no user alarm fires inside the window
         // (schedule entered weeks ahead, or a long off-stretch). One inexact wake just before the
         // window edge re-plans without notifying, so the chain can never permanently stall.
+        armSilentBeacon(REARM_RC, LocalDateTime.now().plusDays(13))
+        // Midnight beacon: re-plan just after date rollover so the widget and the watch's /today
+        // snapshot flip to the new day even when no alarm fires and the app isn't opened.
+        armSilentBeacon(MIDNIGHT_RC, LocalDateTime.now().toLocalDate().plusDays(1).atTime(0, 1))
+    }
+
+    private fun armSilentBeacon(requestCode: Int, at: LocalDateTime) {
         runCatching {
             val rearm = Intent(context, AlarmReceiver::class.java).putExtra("rearm", true)
             val pi = PendingIntent.getBroadcast(
-                context, REARM_RC, rearm,
+                context, requestCode, rearm,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
-            val at = LocalDateTime.now().plusDays(13)
-                .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+            am.setAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                at.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+                pi,
+            )
         }
     }
 
@@ -96,6 +105,7 @@ class AlarmScheduler(
 
     private companion object {
         const val KEY = "scheduled"
-        const val REARM_RC = -1   // fixed requestCode, distinct from id.hashCode() alarms
+        const val REARM_RC = -1     // fixed requestCodes, distinct from id.hashCode() alarms
+        const val MIDNIGHT_RC = -2
     }
 }

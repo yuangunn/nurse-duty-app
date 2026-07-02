@@ -23,4 +23,12 @@ class WearTest {
         val back = WearCommand.decode(WearCommand.encode(memo))
         assertTrue(back is WearCommand.AddMemo && back.bedTag == "1001:01")
     }
+
+    @Test
+    fun setCheckAndSyncRoundTrip() {
+        val set: WearCommand = WearCommand.SetCheck("item1", 20260702, checked = true)
+        assertEquals(set, WearCommand.decode(WearCommand.encode(set)))
+        val sync: WearCommand = WearCommand.Sync
+        assertEquals(sync, WearCommand.decode(WearCommand.encode(sync)))
+    }
 }

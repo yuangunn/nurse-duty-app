@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,8 +41,11 @@ import com.nurseduty.wear.BuildConfig
 import com.google.android.gms.wearable.DataClient
 import com.google.android.gms.wearable.DataMapItem
 import com.google.android.gms.wearable.Wearable
+import com.google.android.gms.wearable.PutDataMapRequest
+import com.nurseduty.domain.DayKey
 import com.nurseduty.domain.WearCommand
 import com.nurseduty.domain.WearState
+import java.time.LocalDate
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import java.util.UUID
@@ -59,7 +63,7 @@ class WearActivity : ComponentActivity() {
 private const val MEMO_KEY = "memo"
 
 private fun previewState(kind: String): WearState = WearState(
-    dayKey = 20260702, dutyName = kind.replaceFirstChar { it.uppercase() }, kind = kind.replaceFirstChar { it.uppercase() },
+    dayKey = DayKey.from(LocalDate.now()), dutyName = kind.replaceFirstChar { it.uppercase() }, kind = kind.replaceFirstChar { it.uppercase() },
     colorHex = null, timeText = "14:00 – 22:00", charge = true, nextAlarm = "13:30", pendingMemos = 1,
     checklist = listOf(
         WearState.WearItem("charge:handover", "팀 배정·인수인계 확인", false),
@@ -103,13 +107,18 @@ fun WearApp(preview: WearState? = null) {
         onDispose { dataClient.removeListener(listener) }
     }
 
+    // DataItem queue: stored locally while disconnected, delivered on reconnect (phone deletes as ack)
     fun send(cmd: WearCommand) = scope.launch {
         runCatching {
-            val nodes = Wearable.getNodeClient(context).connectedNodes.await()
-            val payload = WearCommand.encode(cmd).toByteArray()
-            nodes.forEach { Wearable.getMessageClient(context).sendMessage(it.id, "/command", payload).await() }
+            val req = PutDataMapRequest.create("/cmd/${UUID.randomUUID()}").apply {
+                dataMap.putString("json", WearCommand.encode(cmd))
+            }.asPutDataRequest().setUrgent()
+            Wearable.getDataClient(context).putDataItem(req).await()
         }
     }
+
+    // ask for a fresh /today on open — heals a stale snapshot after midnight or long disconnect
+    LaunchedEffect(Unit) { send(WearCommand.Sync) }
 
     val memoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val text = RemoteInput.getResultsFromIntent(result.data)?.getCharSequence(MEMO_KEY)?.toString()
@@ -149,10 +158,16 @@ fun WearApp(preview: WearState? = null) {
                 ToggleChip(
                     checked = c.checked,
                     onCheckedChange = {
-                        state = state.copy(checklist = state.checklist.map {
-                            if (it.id == c.id) it.copy(checked = !it.checked) else it
-                        })
-                        send(WearCommand.ToggleCheck(c.id, state.dayKey))
+                        val todayKey = DayKey.from(LocalDate.now())
+                        if (state.dayKey != 0 && state.dayKey != todayKey) {
+                            send(WearCommand.Sync)   // stale snapshot — refresh instead of writing to yesterday
+                        } else {
+                            val newChecked = !c.checked
+                            state = state.copy(checklist = state.checklist.map {
+                                if (it.id == c.id) it.copy(checked = newChecked) else it
+                            })
+                            send(WearCommand.SetCheck(c.id, todayKey, newChecked))
+                        }
                     },
                     label = { Text(c.text, color = if (c.checked) WearStyle.Success else Color.White) },
                     toggleControl = { Text(if (c.checked) "✓" else "○", color = if (c.checked) WearStyle.Success else Color(0xFF9AA0AB)) },

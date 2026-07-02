@@ -27,11 +27,16 @@ data class WearState(
     }
 }
 
-/** Command the watch sends back to the phone (MessageClient). */
+/** Command the watch sends back to the phone (DataItem queue; survives disconnection). */
 @Serializable
 sealed interface WearCommand {
+    /** Legacy toggle (non-idempotent) — kept for old watch builds; new builds send SetCheck. */
     @Serializable data class ToggleCheck(val itemId: String, val dayKey: Int) : WearCommand
+    /** Idempotent: safe under the Data Layer's at-least-once delivery. */
+    @Serializable data class SetCheck(val itemId: String, val dayKey: Int, val checked: Boolean) : WearCommand
     @Serializable data class AddMemo(val id: String, val bedTag: String, val text: String) : WearCommand
+    /** Ask the phone to push a fresh /today state (watch woke up stale). */
+    @Serializable data object Sync : WearCommand
 
     companion object {
         private val json = Json { ignoreUnknownKeys = true }

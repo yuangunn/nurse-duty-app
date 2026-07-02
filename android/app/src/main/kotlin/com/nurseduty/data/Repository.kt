@@ -186,11 +186,21 @@ class Repository(
     suspend fun applyWearCommand(cmd: WearCommand) {
         when (cmd) {
             is WearCommand.ToggleCheck -> toggleCheck(cmd.itemId, cmd.dayKey)
+            is WearCommand.SetCheck -> {   // idempotent under at-least-once delivery
+                val existing = dao.check(cmd.itemId, cmd.dayKey)
+                if (cmd.checked && existing == null) {
+                    dao.insertCheck(ChecklistCheckEntity(UUID.randomUUID().toString(), cmd.itemId, cmd.dayKey, System.currentTimeMillis()))
+                } else if (!cmd.checked && existing != null) {
+                    dao.deleteCheck(existing)
+                }
+                refreshWidget()
+            }
             is WearCommand.AddMemo -> {
                 // idempotent: REPLACE on the watch-generated id so a re-delivered command can't duplicate
                 dao.upsertMemo(QuickMemoEntity(cmd.id, cmd.bedTag, cmd.text, false, System.currentTimeMillis()))
                 refreshWidget()
             }
+            is WearCommand.Sync -> refreshWidget()   // pushes a fresh /today to the watch
         }
     }
 

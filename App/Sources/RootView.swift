@@ -1,6 +1,8 @@
 import SwiftUI
 import UIKit
 
+extension Notification.Name { static let denoDictate = Notification.Name("deno.dictate") }
+
 struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.modelContext) private var ctx
@@ -39,6 +41,10 @@ struct RootView: View {
         }
         .onOpenURL { url in
             if url.host == "memo" { selection = 3 }   // widget tap -> 메모 탭 (캡처 한 탭 거리)
+            if url.host == "dictate" {                 // widget 받아쓰기 -> 메모 캡처 시트 + 키보드(마이크 1탭)
+                selection = 3
+                NotificationCenter.default.post(name: .denoDictate, object: nil)
+            }
         }
     }
 }

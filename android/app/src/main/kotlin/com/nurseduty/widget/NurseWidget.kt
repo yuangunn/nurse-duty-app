@@ -10,6 +10,8 @@ import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.LocalSize
 import androidx.glance.appwidget.SizeMode
+import androidx.glance.action.ActionParameters
+import androidx.glance.action.actionParametersOf
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
@@ -77,6 +79,27 @@ private fun WidgetContent(snap: TodayWidget, full: Boolean) {
             snap.nextAlarm?.let {
                 Spacer(GlanceModifier.height(2.dp))
                 Text("⏰ $it", style = TextStyle(color = gray, fontSize = 13.sp))
+            }
+            Spacer(GlanceModifier.defaultWeight())
+            // 빠른 메모: 받아쓰기(즉시 음성인식) + 메모 탭 열기
+            Row(GlanceModifier.fillMaxWidth()) {
+                Text(
+                    "🎤 받아쓰기",
+                    style = TextStyle(color = ColorProvider(Color.White), fontWeight = FontWeight.Bold, fontSize = 13.sp),
+                    modifier = GlanceModifier.background(Color(0xFF3182F6)).cornerRadius(11.dp)
+                        .padding(horizontal = 13.dp, vertical = 7.dp)
+                        .clickable(actionStartActivity<com.nurseduty.VoiceMemoActivity>()),
+                )
+                Spacer(GlanceModifier.width(7.dp))
+                Text(
+                    "메모 열기",
+                    style = TextStyle(color = gray, fontWeight = FontWeight.Bold, fontSize = 13.sp),
+                    modifier = GlanceModifier.background(Color(0xFFF3ECE0)).cornerRadius(11.dp)
+                        .padding(horizontal = 13.dp, vertical = 7.dp)
+                        .clickable(actionStartActivity<com.nurseduty.MainActivity>(
+                            actionParametersOf(ActionParameters.Key<Int>("tab") to 3),
+                        )),
+                )
             }
         } else if (snap.total > 0) {
             Spacer(GlanceModifier.height(4.dp))

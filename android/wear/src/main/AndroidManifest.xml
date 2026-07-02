@@ -38,6 +38,30 @@
                 android:resource="@mipmap/ic_launcher" />
         </service>
 
+        <activity
+            android:name=".WearVoiceMemoActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.DeviceDefault" />
+
+        <service
+            android:name=".MemoComplicationService"
+            android:exported="true"
+            android:icon="@drawable/ic_mic"
+            android:label="빠른 메모 받아쓰기"
+            android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
+            <intent-filter>
+                <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
+            </intent-filter>
+            <meta-data
+                android:name="android.support.wearable.complications.SUPPORTED_TYPES"
+                android:value="MONOCHROMATIC_IMAGE,SHORT_TEXT" />
+            <meta-data
+                android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
+                android:value="0" />
+        </service>
+
         <service
             android:name=".WatchDataListenerService"
             android:exported="true">

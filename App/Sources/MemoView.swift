@@ -6,6 +6,7 @@ struct MemoView: View {
     @Environment(\.modelContext) private var ctx
     @Query(sort: \QuickMemo.createdAt, order: .reverse) private var memos: [QuickMemo]
     @State private var capturing = false
+    @State private var focusNote = false
 
     private var pending: [QuickMemo] { memos.filter { !$0.isDone } }
     private var done: [QuickMemo] { memos.filter { $0.isDone } }
@@ -37,7 +38,10 @@ struct MemoView: View {
                     Button { capturing = true } label: { Image(systemName: "square.and.pencil") }
                 }
             }
-            .sheet(isPresented: $capturing) { MemoCaptureSheet() }
+            .sheet(isPresented: $capturing, onDismiss: { focusNote = false }) { MemoCaptureSheet(focusNote: focusNote) }
+            .onReceive(NotificationCenter.default.publisher(for: .denoDictate)) { _ in
+                focusNote = true; capturing = true
+            }
         }
     }
 
@@ -76,6 +80,7 @@ struct MemoView: View {
 }
 
 struct MemoCaptureSheet: View {
+    var focusNote = false   // 받아쓰기 딥링크: 메모 필드부터 (키보드 마이크가 목적지)
     @Environment(\.modelContext) private var ctx
     @Environment(\.dismiss) private var dismiss
 
@@ -111,7 +116,7 @@ struct MemoCaptureSheet: View {
             }
             // Defer focus: on first sheet present the field isn't in the responder chain yet at
             // onAppear, so setting focus there is silently dropped and the keyboard won't raise.
-            .task { try? await Task.sleep(for: .milliseconds(50)); focused = .bed }
+            .task { try? await Task.sleep(for: .milliseconds(50)); focused = focusNote ? .note : .bed }
         }
     }
 

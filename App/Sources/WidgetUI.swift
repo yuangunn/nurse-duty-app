@@ -49,6 +49,21 @@ struct WidgetHomeView: View {
             }
             Spacer(minLength: 0)
             nextAlarmRow
+            HStack(spacing: 6) {
+                Link(destination: URL(string: "nurseduty://dictate")!) {
+                    Label("받아쓰기", systemImage: "mic.fill")
+                        .font(.caption2.bold()).foregroundStyle(.white)
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(Color(hex: "#3182F6"), in: Capsule())
+                }
+                Link(destination: URL(string: "nurseduty://memo")!) {
+                    Text("메모 열기")
+                        .font(.caption2.bold()).foregroundStyle(.secondary)
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(.quaternary, in: Capsule())
+                }
+            }
+            .padding(.top, 4)
         }
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)

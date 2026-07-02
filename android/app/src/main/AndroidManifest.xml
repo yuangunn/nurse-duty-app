@@ -17,7 +17,15 @@
         android:theme="@style/Theme.NurseDuty">
 
         <activity
+            android:name=".VoiceMemoActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <activity
             android:name=".MainActivity"
+            android:launchMode="singleTask"
             android:exported="true"
             android:theme="@style/Theme.NurseDuty">
             <intent-filter>

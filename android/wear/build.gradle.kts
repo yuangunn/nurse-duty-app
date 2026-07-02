@@ -20,8 +20,8 @@ android {
         applicationId = "com.yuangunn.nurseduty"   // same id as the phone app -> pairs as its watch companion
         minSdk = 30                                 // Wear OS 3+
         targetSdk = 34
-        versionCode = 102   // wear uses the 100s band: Play requires unique versionCodes per package
-        versionName = "0.5"
+        versionCode = 103   // wear uses the 100s band: Play requires unique versionCodes per package
+        versionName = "0.6"
     }
 
     buildFeatures { compose = true; buildConfig = true }
@@ -68,6 +68,9 @@ dependencies {
     implementation("com.google.android.gms:play-services-wearable:18.2.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+
+    // watch-face mic complication (빠른 메모 받아쓰기)
+    implementation("androidx.wear.watchface:watchface-complications-data-source-ktx:1.2.1")
 
     // glanceable "오늘 근무" tile
     implementation("androidx.wear.tiles:tiles:1.4.1")

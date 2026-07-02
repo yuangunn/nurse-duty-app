@@ -100,6 +100,13 @@ fun AppRoot(vm: NurseViewModel) {
         }
     }
 
+    // widget deep-link (메모 열기 등) — consume once, then clear
+    LaunchedEffect(Unit) {
+        com.nurseduty.MainActivity.tabRequest.collect { t ->
+            if (t != null) { tab = t.coerceIn(0, 4); com.nurseduty.MainActivity.tabRequest.value = null }
+        }
+    }
+
     val tabStates = rememberSaveableStateHolder()   // keep per-tab state (month, scroll) across switches
     Box(Modifier.fillMaxSize().background(c.bg)) {
         Column(Modifier.fillMaxSize()) {

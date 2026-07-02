@@ -12,6 +12,7 @@ struct TodayView: View {
     @Query(sort: \DutyProfile.sortOrder) private var profiles: [DutyProfile]
     @Query private var checks: [ChecklistCheck]
     @Query(sort: \QuickMemo.createdAt, order: .reverse) private var memos: [QuickMemo]
+    @StateObject private var weather = WeatherStore.shared
     @State private var dayToken = 0   // bumped at the date boundary so "today" rolls over while foregrounded
     @State private var showSettings = false
     var onMemoTab: () -> Void = {}
@@ -70,8 +71,9 @@ struct TodayView: View {
             dayToken &+= 1
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { dayToken &+= 1 }
+            if phase == .active { dayToken &+= 1; weather.refresh() }
         }
+        .task { weather.refresh() }
         .id(dayToken)
     }
 
@@ -82,6 +84,16 @@ struct TodayView: View {
                 Text(todayTitle).font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.9))
                 Spacer()
+                HStack(spacing: 4) {
+                    if weather.live { Circle().fill(Color(hex: "#7CFFB2")).frame(width: 6, height: 6) }
+                    Image(systemName: "location.fill").font(.system(size: 10)).foregroundStyle(.white.opacity(0.9))
+                    Text("서울").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                    Image(systemName: weather.symbol).font(.system(size: 12)).foregroundStyle(.white)
+                    Text(weather.temp).font(.system(size: 13, weight: .heavy)).foregroundStyle(.white)
+                }
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .background(.white.opacity(0.2), in: Capsule())
+                .padding(.trailing, 7)
                 Button { showSettings = true } label: {
                     Image(systemName: "gearshape.fill")
                         .font(.system(size: 15)).foregroundStyle(.white)

@@ -16,6 +16,8 @@ struct RootView: View {
                 .tabItem { Label("듀티", systemImage: "person.2.badge.gearshape") }
             MemoView().tag(3)
                 .tabItem { Label("메모", systemImage: "note.text") }
+            PillCheckView().tag(4)
+                .tabItem { Label("지참약", systemImage: "pills.fill") }
         }
         .tint(Color(hex: "#3182F6"))
         // Two separate tasks: requestAuthorization() suspends until the user answers the prompt,
@@ -32,6 +34,7 @@ struct RootView: View {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--tab-memo") { selection = 3 }
             if ProcessInfo.processInfo.arguments.contains("--tab-calendar") { selection = 1 }
+            if ProcessInfo.processInfo.arguments.contains("--tab-pill") { selection = 4 }
             #endif
         }
         .onOpenURL { url in

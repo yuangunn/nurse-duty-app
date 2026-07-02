@@ -5,7 +5,7 @@
 # Widgets/watch real-device testing needs a paid Apple Developer account (use the main project.yml).
 name: NurseDutyDevice
 options:
-  bundleIdPrefix: com.example.nurseduty
+  bundleIdPrefix: com.yuangunn.nurseduty
   createIntermediateGroups: true
   deploymentTarget:
     iOS: "18.0"
@@ -25,12 +25,12 @@ targets:
       properties:
         UILaunchScreen: {}
         CFBundleURLTypes:
-          - CFBundleURLName: com.example.nurseduty
+          - CFBundleURLName: com.yuangunn.nurseduty
             CFBundleURLSchemes: [nurseduty]
     settings:
       base:
         # 👉 CHANGE this to something unique under your Apple ID, e.g. com.yourname.nurseduty
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.nurseduty.device
+        PRODUCT_BUNDLE_IDENTIFIER: com.yuangunn.nurseduty.device
         MARKETING_VERSION: "0.1"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "5.0"

@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -6,16 +8,23 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+// release signing comes from local.properties (gitignored): RELEASE_STORE_FILE/-PASSWORD/KEY_ALIAS/KEY_PASSWORD
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+
 android {
     namespace = "com.nurseduty"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.nurseduty"
+        // owned namespace (github.com/yuangunn); store IDs are immutable after first upload
+        applicationId = "com.yuangunn.nurseduty"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = 2
+        versionName = "0.4"
     }
 
     buildFeatures { compose = true }
@@ -26,15 +35,34 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 
+    signingConfigs {
+        if (localProps.getProperty("RELEASE_STORE_FILE") != null) {
+            create("release") {
+                storeFile = rootProject.file(localProps.getProperty("RELEASE_STORE_FILE"))
+                storePassword = localProps.getProperty("RELEASE_STORE_PASSWORD")
+                keyAlias = localProps.getProperty("RELEASE_KEY_ALIAS")
+                keyPassword = localProps.getProperty("RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
-        release { isMinifyEnabled = false }
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.findByName("release")
+        }
     }
 }
+
+ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 
 dependencies {
     implementation(project(":domain"))
 
     implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.fragment:fragment-ktx:1.8.5")   // lintVital: ActivityResult needs fragment >= 1.3
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 

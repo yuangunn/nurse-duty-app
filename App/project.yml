@@ -1,6 +1,6 @@
 name: NurseDuty
 options:
-  bundleIdPrefix: com.example.nurseduty
+  bundleIdPrefix: com.yuangunn.nurseduty
   createIntermediateGroups: true
   deploymentTarget:
     iOS: "18.0"
@@ -22,11 +22,11 @@ targets:
       properties:
         UILaunchScreen: {}
         CFBundleURLTypes:
-          - CFBundleURLName: com.example.nurseduty
+          - CFBundleURLName: com.yuangunn.nurseduty
             CFBundleURLSchemes: [nurseduty]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.nurseduty.app
+        PRODUCT_BUNDLE_IDENTIFIER: com.yuangunn.nurseduty.app
         MARKETING_VERSION: "0.1"
         CURRENT_PROJECT_VERSION: "1"
         # ponytail: Swift 5 mode — keeps SwiftData/SwiftUI clear of strict-concurrency churn.
@@ -50,7 +50,7 @@ targets:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.nurseduty.app.widget
+        PRODUCT_BUNDLE_IDENTIFIER: com.yuangunn.nurseduty.app.widget
         MARKETING_VERSION: "0.1"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "5.0"
@@ -69,12 +69,12 @@ targets:
       path: Info-Watch.plist
       properties:
         WKApplication: true                                       # single-target watch app
-        WKCompanionAppBundleIdentifier: com.example.nurseduty.app
+        WKCompanionAppBundleIdentifier: com.yuangunn.nurseduty.app
         CFBundleDisplayName: NurseDuty
         UIDeviceFamily: [4]                                       # Apple Watch (explicit plist doesn't auto-inject)
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.nurseduty.app.watchkitapp
+        PRODUCT_BUNDLE_IDENTIFIER: com.yuangunn.nurseduty.app.watchkitapp
         MARKETING_VERSION: "0.1"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "5.0"

@@ -20,7 +20,7 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.example.nurseduty</string>
+			<string>com.yuangunn.nurseduty</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>nurseduty</string>

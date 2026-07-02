@@ -27,6 +27,6 @@
 	<key>WKApplication</key>
 	<true/>
 	<key>WKCompanionAppBundleIdentifier</key>
-	<string>com.example.nurseduty.app</string>
+	<string>com.yuangunn.nurseduty.app</string>
 </dict>
 </plist>

@@ -1,6 +1,6 @@
 # NurseDuty
 
-간호사 근무 보조 앱 (iOS, standalone·100% 로컬·계정 없음). MyDuty식 월간 근무표에
+간호사 근무 보조 앱 (Android + iOS, standalone·100% 로컬·계정 없음). MyDuty식 월간 근무표에
 하루 한 근무를 채우면 그 듀티의 알람·체크리스트가 따라온다. 라운딩 중 빠른 메모(병상 태그)도.
 
 ## 기능 (v1)
@@ -35,6 +35,25 @@ xcrun simctl launch booted com.example.nurseduty.app
 ```
 DEBUG 검증 런치 인자: `--seed-demo`(한 달치+샘플 메모 시드, 권한팝업 skip), `--tab-memo`, `--open-settings`.
 
+## Android (현재 주력 — 1b 핀테크 리디자인 적용)
+`android/` 하위 Gradle 멀티모듈: `:domain`(순수 JVM 로직+테스트) · `:app`(Room+AlarmManager+Compose,
+5탭: 홈/근무표/듀티/메모/지참약) · `:wear`(Wear OS 컴패니언+타일). Glance 위젯, 로테이션 일괄 입력,
+듀티 편집 시트, ward-pillcheck WebView 탭 포함.
+
+```sh
+# JDK 21 필요 (brew install openjdk@21), SDK는 ~/Library/Android/sdk (android/local.properties)
+cd android
+JAVA_HOME=/opt/homebrew/opt/openjdk@21 ./gradlew :domain:test :app:testDebugUnitTest   # 단위 테스트
+JAVA_HOME=/opt/homebrew/opt/openjdk@21 ./gradlew :app:assembleDebug :wear:assembleDebug # 디버그 APK
+JAVA_HOME=/opt/homebrew/opt/openjdk@21 ./gradlew :app:assembleRelease                   # 릴리스(R8+서명)
+```
+- 릴리스 서명: `android/local.properties`에 `RELEASE_STORE_FILE/-PASSWORD/KEY_ALIAS/KEY_PASSWORD`
+  (keystore는 `android/keystore/` — **gitignore됨, 분실 시 업데이트 영구 불가이므로 반드시 별도 백업**).
+- applicationId `com.yuangunn.nurseduty` (폰·워치 동일 — 컴패니언 페어링 요건).
+- 에뮬레이터: AVD `nd`(폰, android-35) / `ndwear`(워치, android-34 wear). 워치 프리뷰:
+  `adb shell am start -n com.yuangunn.nurseduty/com.nurseduty.wear.WearActivity -e preview evening`
+- CI: `.github/workflows/android.yml` — push마다 테스트+APK 아티팩트.
+
 ## 로드맵
-v1(로컬) 완료. 다음: 위젯(WidgetKit) → Apple Watch(WatchConnectivity) → Android 포팅.
-설계/검증 근거는 `~/nurse-duty-app-로드맵.md` 참고.
+Android가 iOS를 추월(1b 리디자인·5교대+차지·위젯/워치/타일·지참약). 다음: iOS 패리티 이전.
+설계/검증 근거는 `~/nurse-duty-app-로드맵.md`, 감사 결과는 `~/nurse-duty-app-개선점-2026-07.md` 참고.

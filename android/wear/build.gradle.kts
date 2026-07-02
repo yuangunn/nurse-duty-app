@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -5,16 +7,21 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+
 android {
     namespace = "com.nurseduty.wear"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.nurseduty"   // same id as the phone app -> pairs as its watch companion
-        minSdk = 30                        // Wear OS 3+
+        applicationId = "com.yuangunn.nurseduty"   // same id as the phone app -> pairs as its watch companion
+        minSdk = 30                                 // Wear OS 3+
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = 101   // wear uses the 100s band: Play requires unique versionCodes per package
+        versionName = "0.4"
     }
 
     buildFeatures { compose = true; buildConfig = true }
@@ -23,7 +30,26 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    buildTypes { release { isMinifyEnabled = false } }
+
+    signingConfigs {
+        if (localProps.getProperty("RELEASE_STORE_FILE") != null) {
+            create("release") {
+                storeFile = rootProject.file(localProps.getProperty("RELEASE_STORE_FILE"))
+                storePassword = localProps.getProperty("RELEASE_STORE_PASSWORD")
+                keyAlias = localProps.getProperty("RELEASE_KEY_ALIAS")
+                keyPassword = localProps.getProperty("RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.findByName("release")
+        }
+    }
 }
 
 dependencies {

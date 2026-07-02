@@ -18,7 +18,7 @@ class NurseApp : Application() {
     override fun onCreate() {
         super.onCreate()
         val db = Room.databaseBuilder(this, AppDatabase::class.java, "nurseduty.db")
-            .fallbackToDestructiveMigration()   // debug: schema bumps re-seed presets, no precious data
+            .addMigrations(AppDatabase.MIGRATION_1_2)   // never destructive: this app's value IS its history
             .build()
         val scheduler = AlarmScheduler(this, getSharedPreferences("sched", MODE_PRIVATE))
         repository = Repository(db, scheduler, this)

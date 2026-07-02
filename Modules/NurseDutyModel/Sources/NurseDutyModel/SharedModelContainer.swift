@@ -4,7 +4,7 @@ import SwiftData
 public enum NurseDutyStore {
     // ponytail: must match the App Group entitlement added to the app / widget / watch targets in Phase 1.
     // App Group is shared app<->widget on the SAME device only; the watch gets data via WatchConnectivity.
-    public static let appGroupID = "group.com.example.nurseduty"
+    public static let appGroupID = "group.com.yuangunn.nurseduty"
 
     public static let schema = Schema([
         DutyProfile.self,
